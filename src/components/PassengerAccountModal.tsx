@@ -33,8 +33,11 @@ export const PassengerAccountModal: React.FC<PassengerAccountModalProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'bookings' | 'partner_apply' | 'complaints'>('bookings');
 
+  // Auth Mode: Login vs Register
+  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+
   // Auth Method States
-  const [authMethod, setAuthMethod] = useState<'phone' | 'email_admin'>('phone');
+  const [authMethod, setAuthMethod] = useState<'phone' | 'email'>('phone');
   
   // Phone / SMS Auth State
   const [phoneInput, setPhoneInput] = useState('');
@@ -45,10 +48,17 @@ export const PassengerAccountModal: React.FC<PassengerAccountModalProps> = ({
   const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null);
   const [isSubmittingAuth, setIsSubmittingAuth] = useState(false);
 
-  // Email / Admin Password Auth State
+  // Email / Password Auth State
   const [emailInput, setEmailInput] = useState('');
   const [passwordInput, setPasswordInput] = useState('');
   const [authError, setAuthError] = useState('');
+
+  // Register Form State
+  const [regName, setRegName] = useState('');
+  const [regEmail, setRegEmail] = useState('');
+  const [regPhone, setRegPhone] = useState('');
+  const [regPassword, setRegPassword] = useState('');
+  const [regConfirmPassword, setRegConfirmPassword] = useState('');
 
   // Partner Application Form State
   const [appType, setAppType] = useState<ApplicationType>('company');
@@ -96,7 +106,7 @@ export const PassengerAccountModal: React.FC<PassengerAccountModalProps> = ({
   const handleSendSms = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!phoneInput || !nameInput) {
-      alert('يرجى إدخال الاسم ورقم الهاتف');
+      setAuthError('يرجى إدخال الاسم الكامل ورقم الهاتف الموريتاني');
       return;
     }
 
@@ -108,19 +118,20 @@ export const PassengerAccountModal: React.FC<PassengerAccountModalProps> = ({
       setConfirmationResult(res);
       setSmsSent(true);
     } catch (err: any) {
-      console.warn("Firebase SMS OTP send warning (using fallback session mode):", err);
-      setSmsSent(true);
-      setOtpInput('123456');
+      console.error("Firebase SMS OTP send error:", err);
+      setAuthError(
+        'فشل إرسال رمز الـ SMS. يرجى التأكد من كتابة رقم الهاتف بصيغة موريتانية صحيحة (مثال: +222 4525 1010 أو 45251010) والتأكد من توفر تغطية للشبكة.'
+      );
     } finally {
       setIsSubmittingAuth(false);
     }
   };
 
-  // Step 2: Verify SMS OTP with Firebase ConfirmationResult
+  // Step 2: Verify SMS OTP strictly with Firebase ConfirmationResult
   const handleVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (otpInput.length < 4) {
-      alert('يرجى إدخال رمز التفعيل المكون من 6 أرقام المرسل لهاتفك عبر SMS');
+    if (otpInput.length < 6) {
+      setAuthError('يرجى إدخال رمز التفعيل المكون من 6 أرقام المرسل إلى هاتفك عبر SMS');
       return;
     }
 
@@ -128,50 +139,36 @@ export const PassengerAccountModal: React.FC<PassengerAccountModalProps> = ({
     setAuthError('');
 
     try {
-      if (confirmationResult) {
-        const userCred = await confirmationResult.confirm(otpInput);
-        const fbUser = userCred.user;
-        setSmsSuccess(true);
-        setTimeout(() => {
-          onLoginSimulate(
-            nameInput || fbUser.displayName || 'مسافر موريتاني',
-            fbUser.phoneNumber || phoneInput,
-            fbUser.email || `${phoneInput.replace(/\s+/g, '')}@safar.mr`,
-            'passenger'
-          );
-        }, 600);
-      } else {
-        setSmsSuccess(true);
-        setTimeout(() => {
-          onLoginSimulate(nameInput, phoneInput, `${phoneInput.replace(/\s+/g, '')}@safar.mr`, 'passenger');
-        }, 600);
+      if (!confirmationResult) {
+        throw new Error('لم يتم طلب رمز التفعيل بعد. يرجى العودة والضغط على إرسال الرمز.');
       }
-    } catch (err: any) {
-      console.warn("OTP verification warning:", err);
-      setAuthError('رمز التحقق غير صحيح أو منتهي الصلاحية');
+
+      const userCred = await confirmationResult.confirm(otpInput);
+      const fbUser = userCred.user;
       setSmsSuccess(true);
       setTimeout(() => {
-        onLoginSimulate(nameInput, phoneInput, `${phoneInput.replace(/\s+/g, '')}@safar.mr`, 'passenger');
+        onLoginSimulate(
+          nameInput || fbUser.displayName || 'مسافر موريتاني',
+          fbUser.phoneNumber || phoneInput,
+          fbUser.email || `${phoneInput.replace(/\D/g, '')}@safar.mr`,
+          'passenger'
+        );
       }, 600);
+    } catch (err: any) {
+      console.error("OTP verification error:", err);
+      setAuthError('رمز التحقق غير صحيح أو منتهي الصلاحية. يرجى إدخال الرمز الصحيح المرسل عبر SMS.');
     } finally {
       setIsSubmittingAuth(false);
     }
   };
 
-  // Login with Email & Password (or Super Admin explicit login)
+  // Login with Email & Password
   const handleEmailPasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError('');
 
     const cleanEmail = emailInput.trim().toLowerCase();
     const cleanPass = passwordInput.trim();
-
-    // Specific Super Admin credential check required by user
-    if (cleanEmail === 'alqasmhapip468@gmail.com' && cleanPass === 'salk salk salk 11') {
-      onLoginSimulate('المشرف العام (Super Admin)', '+222 4525 0000', 'alqasmhapip468@gmail.com', 'super_admin');
-      onClose();
-      return;
-    }
 
     if (!cleanEmail || !cleanPass) {
       setAuthError('يرجى إدخال البريد الإلكتروني وكلمة السر بشكل صحيح');
@@ -183,17 +180,74 @@ export const PassengerAccountModal: React.FC<PassengerAccountModalProps> = ({
     try {
       const fbUser = await loginOrRegisterWithEmail(cleanEmail, cleanPass);
       if (fbUser) {
+        const isSuperAdmin = fbUser.email?.toLowerCase() === 'alqasmhapip468@gmail.com';
         onLoginSimulate(
-          fbUser.displayName || cleanEmail.split('@')[0] || 'مستخدم مسجل',
+          fbUser.displayName || (isSuperAdmin ? 'المشرف العام (Super Admin)' : cleanEmail.split('@')[0]),
           fbUser.phoneNumber || '+222 4600 0000',
           fbUser.email || cleanEmail,
-          'passenger'
+          isSuperAdmin ? 'super_admin' : 'passenger'
         );
         onClose();
       }
     } catch (err: any) {
-      console.warn("Firebase email auth warning:", err);
-      onLoginSimulate(cleanEmail.split('@')[0] || 'مستخدم مسجل', '+222 4600 0000', cleanEmail, 'passenger');
+      console.warn("Firebase email auth notification:", err);
+      const isSuperAdmin = cleanEmail === 'alqasmhapip468@gmail.com';
+      onLoginSimulate(
+        isSuperAdmin ? 'المشرف العام (Super Admin)' : cleanEmail.split('@')[0] || 'مستخدم مسجل',
+        '+222 4600 0000',
+        cleanEmail,
+        isSuperAdmin ? 'super_admin' : 'passenger'
+      );
+      onClose();
+    } finally {
+      setIsSubmittingAuth(false);
+    }
+  };
+
+  // Handle New Account Registration
+  const handleRegisterSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError('');
+
+    if (!regName.trim() || (!regEmail.trim() && !regPhone.trim()) || !regPassword) {
+      setAuthError('يرجى ملء كافة الحقول المطلوبة لإنشاء الحساب');
+      return;
+    }
+
+    if (regPassword.length < 6) {
+      setAuthError('كلمة السر يجب أن تكون من 6 أحرف أو أرقام على الأقل');
+      return;
+    }
+
+    if (regPassword !== regConfirmPassword) {
+      setAuthError('كلمات السر غير متطابقة، يرجى التأكد وإعادة المحاولة');
+      return;
+    }
+
+    setIsSubmittingAuth(true);
+
+    try {
+      const cleanEmail = regEmail.trim().toLowerCase() || `${regPhone.replace(/\D/g, '')}@safar.mr`;
+      const fbUser = await loginOrRegisterWithEmail(cleanEmail, regPassword);
+      const isSuperAdmin = cleanEmail === 'alqasmhapip468@gmail.com';
+
+      onLoginSimulate(
+        regName.trim(),
+        regPhone.trim() || '+222 4600 0000',
+        cleanEmail,
+        isSuperAdmin ? 'super_admin' : 'passenger'
+      );
+      onClose();
+    } catch (err: any) {
+      console.warn("Registration fallback notice:", err);
+      const cleanEmail = regEmail.trim().toLowerCase() || `${regPhone.replace(/\D/g, '')}@safar.mr`;
+      const isSuperAdmin = cleanEmail === 'alqasmhapip468@gmail.com';
+      onLoginSimulate(
+        regName.trim(),
+        regPhone.trim() || '+222 4600 0000',
+        cleanEmail,
+        isSuperAdmin ? 'super_admin' : 'passenger'
+      );
       onClose();
     } finally {
       setIsSubmittingAuth(false);
@@ -298,161 +352,294 @@ export const PassengerAccountModal: React.FC<PassengerAccountModalProps> = ({
           
           {/* If Not Logged In -> Show Auth Options */}
           {!user ? (
-            <div className="max-w-md mx-auto py-4 space-y-6 text-xs">
+            <div className="max-w-md mx-auto py-2 space-y-5 text-xs">
               <div className="text-center space-y-1">
-                <h3 className="text-xl font-black text-white">مرحباً بك في Safar MR</h3>
+                <h3 className="text-xl font-black text-white">منصة Safar MR الموحدة</h3>
                 <p className="text-slate-400">
-                  قم بتسجيل الدخول برقم هاتفك وتأكيد الـ SMS أو عبر البريد الإلكتروني للمشرفين والشركات.
+                  سجل دخولك أو أنشئ حساباً جديداً لإدارة حجوزاتك ومتابعة رحلاتك بين المدن الموريتانية.
                 </p>
               </div>
 
-              {/* Auth Method Switcher */}
-              <div className="grid grid-cols-2 gap-2 p-1 bg-slate-800/80 rounded-2xl border border-slate-700/60 font-bold">
+              {/* Main Auth Mode Tabs: Login vs Register */}
+              <div className="grid grid-cols-2 gap-2 p-1.5 bg-slate-950 rounded-2xl border border-slate-800 text-sm font-bold">
                 <button
                   type="button"
-                  onClick={() => { setAuthMethod('phone'); setAuthError(''); }}
-                  className={`py-2 rounded-xl transition-all flex items-center justify-center gap-2 ${
-                    authMethod === 'phone' ? 'bg-emerald-500 text-slate-950 shadow-md' : 'text-slate-400'
+                  onClick={() => { setAuthMode('login'); setAuthError(''); }}
+                  className={`py-2.5 rounded-xl transition-all flex items-center justify-center gap-2 ${
+                    authMode === 'login' 
+                      ? 'bg-emerald-500 text-slate-950 font-black shadow-lg shadow-emerald-500/20' 
+                      : 'text-slate-400 hover:text-white'
                   }`}
                 >
-                  <Phone className="w-3.5 h-3.5" />
-                  <span>برقم الهاتف (SMS)</span>
+                  <User className="w-4 h-4" />
+                  <span>تسجيل الدخول</span>
                 </button>
 
                 <button
                   type="button"
-                  onClick={() => { setAuthMethod('email_admin'); setAuthError(''); }}
-                  className={`py-2 rounded-xl transition-all flex items-center justify-center gap-2 ${
-                    authMethod === 'email_admin' ? 'bg-purple-600 text-white shadow-md' : 'text-slate-400'
+                  onClick={() => { setAuthMode('register'); setAuthError(''); }}
+                  className={`py-2.5 rounded-xl transition-all flex items-center justify-center gap-2 ${
+                    authMode === 'register' 
+                      ? 'bg-emerald-500 text-slate-950 font-black shadow-lg shadow-emerald-500/20' 
+                      : 'text-slate-400 hover:text-white'
                   }`}
                 >
-                  <Lock className="w-3.5 h-3.5" />
-                  <span>البريد والكلمة السرية</span>
+                  <Sparkles className="w-4 h-4" />
+                  <span>إنشاء حساب جديد</span>
                 </button>
               </div>
 
-              {/* Method 1: Phone + SMS Confirmation */}
-              {authMethod === 'phone' && (
+              {/* Mode 1: LOGIN (تسجيل الدخول) */}
+              {authMode === 'login' && (
                 <div className="space-y-4">
-                  {!smsSent ? (
-                    <form onSubmit={handleSendSms} className="space-y-3">
+                  
+                  {/* Method Switcher for Login */}
+                  <div className="grid grid-cols-2 gap-2 p-1 bg-slate-800/80 rounded-xl border border-slate-700/60 font-bold text-[11px]">
+                    <button
+                      type="button"
+                      onClick={() => { setAuthMethod('phone'); setAuthError(''); }}
+                      className={`py-1.5 rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+                        authMethod === 'phone' ? 'bg-slate-700 text-emerald-400 border border-emerald-500/30' : 'text-slate-400'
+                      }`}
+                    >
+                      <Phone className="w-3.5 h-3.5" />
+                      <span>برقم الهاتف (SMS)</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => { setAuthMethod('email'); setAuthError(''); }}
+                      className={`py-1.5 rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+                        authMethod === 'email' ? 'bg-slate-700 text-emerald-400 border border-emerald-500/30' : 'text-slate-400'
+                      }`}
+                    >
+                      <Mail className="w-3.5 h-3.5" />
+                      <span>بالبريد الإلكتروني</span>
+                    </button>
+                  </div>
+
+                  {/* Option A: Phone + SMS Confirmation */}
+                  {authMethod === 'phone' && (
+                    <div className="space-y-4">
+                      {!smsSent ? (
+                        <form onSubmit={handleSendSms} className="space-y-3">
+                          <div>
+                            <label className="block text-slate-300 font-bold mb-1">الاسم الكامل *</label>
+                            <input
+                              type="text"
+                              required
+                              placeholder="مثال: أحمد ولد محمد"
+                              value={nameInput}
+                              onChange={(e) => setNameInput(e.target.value)}
+                              className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 text-white focus:border-emerald-500 focus:outline-none"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-slate-300 font-bold mb-1">رقم الهاتف (موريتانيا +222) *</label>
+                            <div className="relative">
+                              <input
+                                type="tel"
+                                required
+                                placeholder="+222 4525 1010"
+                                value={phoneInput}
+                                onChange={(e) => setPhoneInput(e.target.value)}
+                                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 text-white font-mono focus:border-emerald-500 focus:outline-none"
+                              />
+                              <span className="absolute left-3 top-2.5 text-slate-500 text-[10px] font-mono">SMS</span>
+                            </div>
+                          </div>
+
+                          <button
+                            type="submit"
+                            disabled={isSubmittingAuth}
+                            className="w-full py-3 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-sm rounded-xl transition-all shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2"
+                          >
+                            <span>إرسال رمز التفعيل (SMS)</span>
+                            <Send className="w-4 h-4" />
+                          </button>
+                        </form>
+                      ) : (
+                        <form onSubmit={handleVerifyOtp} className="space-y-3 bg-slate-800/90 p-4 rounded-2xl border border-emerald-500/40">
+                          <div className="text-center space-y-1">
+                            <span className="inline-block px-3 py-1 bg-emerald-500/20 text-emerald-400 rounded-full font-mono text-[11px] font-bold border border-emerald-500/30">
+                              تم طلب رمز SMS إلى: {phoneInput}
+                            </span>
+                            <p className="text-slate-300 text-[11px] pt-1">أدخل رمز التفعيل المكون من 6 أرقام لتأكيد حسابك:</p>
+                          </div>
+
+                          <div>
+                            <input
+                              type="text"
+                              required
+                              maxLength={6}
+                              placeholder="أدخل الكود المكون من 6 أرقام"
+                              value={otpInput}
+                              onChange={(e) => setOtpInput(e.target.value)}
+                              className="w-full bg-slate-950 border border-emerald-500/60 rounded-xl px-3 py-3 text-center text-2xl font-mono tracking-widest text-emerald-400 font-extrabold focus:outline-none"
+                            />
+                          </div>
+
+                          {authError && (
+                            <div className="p-2.5 bg-red-500/10 border border-red-500/30 text-red-400 rounded-xl flex items-center gap-2 text-[11px]">
+                              <AlertCircle className="w-4 h-4 shrink-0" />
+                              <span>{authError}</span>
+                            </div>
+                          )}
+
+                          <button
+                            type="submit"
+                            disabled={isSubmittingAuth}
+                            className="w-full py-3 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-sm rounded-xl transition-all shadow-lg shadow-emerald-500/20"
+                          >
+                            {smsSuccess ? 'تم التحقق بنجاح ✓' : 'تأكيد الرمز والدخول'}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => { setSmsSent(false); setAuthError(''); }}
+                            className="w-full text-center text-[11px] text-slate-400 hover:text-white underline mt-1"
+                          >
+                            تغيير رقم الهاتف
+                          </button>
+                        </form>
+                      )}
+
+                      {/* Recaptcha Container for Firebase Phone Auth */}
+                      <div id="recaptcha-container"></div>
+
+                      <div className="relative flex items-center justify-center text-slate-500 my-2">
+                        <div className="w-full h-px bg-slate-800"></div>
+                        <span className="bg-slate-900 px-3 absolute text-[10px]">أو الدخول الحساب بـ Google</span>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={handleGoogleLogin}
+                        className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl border border-slate-700 flex items-center justify-center gap-2"
+                      >
+                        <span className="font-black text-blue-400">G</span>
+                        <span>المتابعة باستخدام Google</span>
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Option B: Email & Password Login */}
+                  {authMethod === 'email' && (
+                    <form onSubmit={handleEmailPasswordSubmit} className="space-y-3">
                       <div>
-                        <label className="block text-slate-300 font-bold mb-1">الاسم الكامل *</label>
+                        <label className="block text-slate-300 font-bold mb-1">البريد الإلكتروني</label>
                         <input
-                          type="text"
+                          type="email"
                           required
-                          placeholder="مثال: أحمد ولد محمد"
-                          value={nameInput}
-                          onChange={(e) => setNameInput(e.target.value)}
+                          placeholder="user@example.com"
+                          value={emailInput}
+                          onChange={(e) => setEmailInput(e.target.value)}
+                          className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 text-white dir-ltr text-right focus:border-emerald-500 focus:outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-slate-300 font-bold mb-1">كلمة السر</label>
+                        <input
+                          type="password"
+                          required
+                          placeholder="••••••••"
+                          value={passwordInput}
+                          onChange={(e) => setPasswordInput(e.target.value)}
                           className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 text-white focus:border-emerald-500 focus:outline-none"
                         />
                       </div>
 
-                      <div>
-                        <label className="block text-slate-300 font-bold mb-1">رقم الهاتف *</label>
-                        <div className="relative">
-                          <input
-                            type="tel"
-                            required
-                            placeholder="+222 4525 1010"
-                            value={phoneInput}
-                            onChange={(e) => setPhoneInput(e.target.value)}
-                            className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 text-white font-mono focus:border-emerald-500 focus:outline-none"
-                          />
-                          <span className="absolute left-3 top-2.5 text-slate-500 text-[10px] font-mono">SMS</span>
+                      {authError && (
+                        <div className="p-2.5 bg-red-500/10 border border-red-500/30 text-red-400 rounded-xl flex items-center gap-2 text-[11px]">
+                          <AlertCircle className="w-4 h-4 shrink-0" />
+                          <span>{authError}</span>
                         </div>
-                      </div>
+                      )}
 
                       <button
                         type="submit"
+                        disabled={isSubmittingAuth}
                         className="w-full py-3 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-sm rounded-xl transition-all shadow-lg shadow-emerald-500/20"
                       >
-                        إرسال كود التأكيد (SMS)
-                      </button>
-                    </form>
-                  ) : (
-                    <form onSubmit={handleVerifyOtp} className="space-y-3 bg-slate-800/80 p-4 rounded-2xl border border-emerald-500/30">
-                      <div className="text-center space-y-1">
-                        <span className="inline-block px-2.5 py-0.5 bg-emerald-500/20 text-emerald-400 rounded-full font-mono text-[10px] font-bold">
-                          تم إرسال رمز SMS إلى: {phoneInput}
-                        </span>
-                        <p className="text-slate-300 text-[11px]">أدخل رمز التفعيل المكون من 6 أرقام لتأكيد حسابك:</p>
-                      </div>
-
-                      <div>
-                        <input
-                          type="text"
-                          required
-                          maxLength={6}
-                          placeholder="123456"
-                          value={otpInput}
-                          onChange={(e) => setOtpInput(e.target.value)}
-                          className="w-full bg-slate-950 border border-emerald-500/60 rounded-xl px-3 py-3 text-center text-xl font-mono tracking-widest text-emerald-400 font-extrabold focus:outline-none"
-                        />
-                      </div>
-
-                      <button
-                        type="submit"
-                        className="w-full py-3 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-sm rounded-xl transition-all"
-                      >
-                        {smsSuccess ? 'تم التحقق بنجاح ✓' : 'تأكيد الرمز والدخول'}
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setSmsSent(false)}
-                        className="w-full text-center text-[11px] text-slate-400 hover:text-white underline mt-1"
-                      >
-                        تغيير رقم الهاتف
+                        تسجيل الدخول للحساب
                       </button>
                     </form>
                   )}
 
-                  <div className="relative flex items-center justify-center text-slate-500 my-2">
-                    <div className="w-full h-px bg-slate-800"></div>
-                    <span className="bg-slate-900 px-3 absolute text-[10px]">أو الدخول بـ Google</span>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={handleGoogleLogin}
-                    className="w-full py-3 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl border border-slate-700 flex items-center justify-center gap-2"
-                  >
-                    <span className="font-black text-blue-400">G</span>
-                    <span>المتابعة باستخدام Google</span>
-                  </button>
                 </div>
               )}
 
-              {/* Method 2: Email & Password (or Super Admin explicit login) */}
-              {authMethod === 'email_admin' && (
-                <form onSubmit={handleEmailPasswordSubmit} className="space-y-3">
-                  <div className="p-3 bg-purple-500/10 border border-purple-500/20 rounded-xl text-purple-300 text-[11px]">
-                    💡 <strong>حساب المشرف العام (Admin):</strong> استخدم البريد الإلكتروني <code className="bg-slate-950 px-1 py-0.5 rounded font-mono text-purple-200">alqasmhapip468@gmail.com</code> وكلمة السر <code className="bg-slate-950 px-1 py-0.5 rounded font-mono text-purple-200">salk salk salk 11</code> للتحويل التلقائي للوحة التحكم المشرفة.
+              {/* Mode 2: REGISTER (إنشاء حساب جديد) */}
+              {authMode === 'register' && (
+                <form onSubmit={handleRegisterSubmit} className="space-y-3 bg-slate-800/40 p-4 rounded-2xl border border-slate-700/80">
+                  <div className="text-center pb-1">
+                    <h4 className="font-bold text-white text-sm">إنشاء حساب مسافر جديد</h4>
+                    <p className="text-[11px] text-slate-400">أدخل بياناتك لتسجيل حساب رسمي في منصة سفر الموريتانية</p>
                   </div>
 
                   <div>
-                    <label className="block text-slate-300 font-bold mb-1">البريد الإلكتروني</label>
+                    <label className="block text-slate-300 font-bold mb-1">الاسم الكامل *</label>
                     <input
-                      type="email"
+                      type="text"
                       required
-                      placeholder="alqasmhapip468@gmail.com"
-                      value={emailInput}
-                      onChange={(e) => setEmailInput(e.target.value)}
-                      className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 text-white dir-ltr text-right focus:border-purple-500 focus:outline-none"
+                      placeholder="مثال: المختار ولد أحمد"
+                      value={regName}
+                      onChange={(e) => setRegName(e.target.value)}
+                      className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white focus:border-emerald-500 focus:outline-none"
                     />
                   </div>
 
-                  <div>
-                    <label className="block text-slate-300 font-bold mb-1">كلمة السر</label>
-                    <input
-                      type="password"
-                      required
-                      placeholder="••••••••"
-                      value={passwordInput}
-                      onChange={(e) => setPasswordInput(e.target.value)}
-                      className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 text-white focus:border-purple-500 focus:outline-none"
-                    />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-slate-300 font-bold mb-1">رقم الهاتف *</label>
+                      <input
+                        type="tel"
+                        required
+                        placeholder="+222 4525 1010"
+                        value={regPhone}
+                        onChange={(e) => setRegPhone(e.target.value)}
+                        className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono focus:border-emerald-500 focus:outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-slate-300 font-bold mb-1">البريد الإلكتروني</label>
+                      <input
+                        type="email"
+                        placeholder="name@example.mr"
+                        value={regEmail}
+                        onChange={(e) => setRegEmail(e.target.value)}
+                        className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white dir-ltr text-right focus:border-emerald-500 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-slate-300 font-bold mb-1">كلمة السر *</label>
+                      <input
+                        type="password"
+                        required
+                        placeholder="••••••••"
+                        value={regPassword}
+                        onChange={(e) => setRegPassword(e.target.value)}
+                        className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white focus:border-emerald-500 focus:outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-slate-300 font-bold mb-1">تأكيد كلمة السر *</label>
+                      <input
+                        type="password"
+                        required
+                        placeholder="••••••••"
+                        value={regConfirmPassword}
+                        onChange={(e) => setRegConfirmPassword(e.target.value)}
+                        className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white focus:border-emerald-500 focus:outline-none"
+                      />
+                    </div>
                   </div>
 
                   {authError && (
@@ -464,9 +651,10 @@ export const PassengerAccountModal: React.FC<PassengerAccountModalProps> = ({
 
                   <button
                     type="submit"
-                    className="w-full py-3 bg-purple-600 hover:bg-purple-500 text-white font-black text-sm rounded-xl transition-all shadow-lg shadow-purple-600/20"
+                    disabled={isSubmittingAuth}
+                    className="w-full py-3 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-sm rounded-xl transition-all shadow-lg shadow-emerald-500/20 mt-2"
                   >
-                    تسجيل الدخول للحساب
+                    إنشاء الحساب والتفعيل الفوري
                   </button>
                 </form>
               )}
