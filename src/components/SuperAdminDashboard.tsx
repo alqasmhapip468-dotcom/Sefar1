@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { ShieldCheck, Building2, MapPin, Users, Ticket, DollarSign, Bell, QrCode, CheckCircle2, AlertCircle, Plus, Search, Settings } from 'lucide-react';
-import { Company, City, Booking, AdminSettings, CommissionType } from '../types';
+import { ShieldCheck, Building2, MapPin, Users, Ticket, DollarSign, Bell, QrCode, CheckCircle2, AlertCircle, Plus, Search, Settings, Car, Check, X, MessageSquare, Clock, FileText } from 'lucide-react';
+import { Company, City, Booking, AdminSettings, CommissionType, PartnerApplication, ComplaintReport } from '../types';
 import { formatCurrencyMRU } from '../lib/utils';
 
 interface SuperAdminDashboardProps {
@@ -8,9 +8,15 @@ interface SuperAdminDashboardProps {
   cities: City[];
   bookings: Booking[];
   adminSettings: AdminSettings;
+  applications: PartnerApplication[];
+  complaints: ComplaintReport[];
   onUpdateAdminSettings: (newSettings: AdminSettings) => void;
   onToggleVerifyCompany: (companyId: string) => void;
   onAddCity: (newCity: City) => void;
+  onApproveApplication: (appId: string, adminNotes: string) => void;
+  onRejectApplication: (appId: string, adminNotes: string) => void;
+  onResolveComplaint: (complaintId: string, response: string) => void;
+  onUpdateCompanyCommission: (companyId: string, type: CommissionType, value: number) => void;
 }
 
 export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
@@ -18,11 +24,31 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
   cities,
   bookings,
   adminSettings,
+  applications,
+  complaints,
   onUpdateAdminSettings,
   onToggleVerifyCompany,
-  onAddCity
+  onAddCity,
+  onApproveApplication,
+  onRejectApplication,
+  onResolveComplaint,
+  onUpdateCompanyCommission
 }) => {
-  const [activeTab, setActiveTab] = useState<'kpi' | 'commission' | 'companies' | 'cities' | 'qr_verifier' | 'notifications'>('kpi');
+  const [activeTab, setActiveTab] = useState<'applications' | 'complaints' | 'kpi' | 'commission' | 'companies' | 'cities' | 'qr_verifier' | 'notifications'>('applications');
+
+  // Applications Filter & Modal State
+  const [appFilter, setAppFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('pending');
+  const [selectedApp, setSelectedApp] = useState<PartnerApplication | null>(null);
+  const [adminNoteInput, setAdminNoteInput] = useState('');
+
+  // Complaint Action State
+  const [selectedComplaint, setSelectedComplaint] = useState<ComplaintReport | null>(null);
+  const [complaintResponseInput, setComplaintResponseInput] = useState('');
+
+  // Individual Company Commission Edit Modal
+  const [editingCompany, setEditingCompany] = useState<Company | null>(null);
+  const [compCommType, setCompCommType] = useState<CommissionType>('fixed');
+  const [compCommVal, setCompCommVal] = useState<number>(30);
 
   // QR Verifier State
   const [qrCodeInput, setQrCodeInput] = useState('');
@@ -42,9 +68,18 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
   const [notifMessage, setNotifMessage] = useState('');
   const [notifSent, setNotifSent] = useState(false);
 
-  // Calculate System Total Revenues
+  // Calculate Today's Real-time Transactions & Stats
+  const todayStr = new Date().toISOString().split('T')[0];
+  const todayBookings = bookings.filter(b => b.createdAt.startsWith(todayStr) || b.tripDetails.departureDate === todayStr);
+  const todayTransactionsCount = todayBookings.length;
+  const todayVolumeMRU = todayBookings.reduce((sum, b) => sum + b.totalPriceMRU, 0);
+  const todayCommissionsMRU = todayBookings.reduce((sum, b) => sum + b.commissionMRU, 0);
+
   const totalVolumeMRU = bookings.reduce((sum, b) => sum + b.totalPriceMRU, 0);
   const totalPlatformCommissionsEarned = bookings.reduce((sum, b) => sum + b.commissionMRU, 0);
+
+  const pendingAppsCount = applications.filter(a => a.status === 'pending').length;
+  const pendingComplaintsCount = complaints.filter(c => c.status === 'pending').length;
 
   const handleVerifyQR = (e: React.FormEvent) => {
     e.preventDefault();
@@ -70,7 +105,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
       defaultCommissionType: commissionType,
       defaultCommissionValue: commissionValue
     });
-    alert('تم حفظ إعدادات العمولات بنجاح!');
+    alert('تم حفظ إعدادات العمولات الافتراضية بنجاح!');
   };
 
   const handleCreateCity = (e: React.FormEvent) => {
@@ -102,48 +137,111 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
     }, 1000);
   };
 
+  const filteredApps = applications.filter(a => {
+    if (appFilter === 'all') return true;
+    return a.status === appFilter;
+  });
+
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 text-right font-sans">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 text-right font-sans dir-rtl text-slate-100" dir="rtl">
       
       {/* Admin Title Banner */}
-      <div className="bg-slate-800 border border-slate-700/80 rounded-3xl p-6 mb-8 flex items-center justify-between shadow-xl">
+      <div className="bg-slate-800 border border-slate-700/80 rounded-3xl p-6 mb-8 flex flex-col md:flex-row items-center justify-between gap-4 shadow-xl">
         <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-2xl bg-purple-600 text-white flex items-center justify-center">
+          <div className="w-12 h-12 rounded-2xl bg-purple-600 text-white flex items-center justify-center font-black shadow-lg shadow-purple-600/30">
             <ShieldCheck className="w-7 h-7" />
           </div>
           <div>
-            <h1 className="text-2xl font-black text-white">لوحة تحكم المدير العام (Super Admin)</h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl font-black text-white">لوحة الإدارة الرئيسية (Super Admin)</h1>
+              <span className="px-2.5 py-0.5 bg-purple-500/20 text-purple-300 border border-purple-500/30 text-[10px] font-bold rounded-full">
+                الحساب الإداري الرئيسي ⚡
+              </span>
+            </div>
             <p className="text-xs text-slate-400 mt-0.5">
-              إدارة الشركات، ضبط العمولات، والتحقق من التذاكر بـ QR
+              مراجعة طلبات الشركات والمستقلين، ضبط نسب العمولات، متابعة البلاغات، وإحصائيات المعاملات اليومية
             </p>
           </div>
         </div>
 
-        <span className="px-3 py-1 bg-purple-500/20 text-purple-300 border border-purple-500/30 text-xs font-bold rounded-full">
-          صلاحيات كاملة ⚡
-        </span>
+        <div className="flex items-center gap-3 bg-slate-900/90 px-4 py-2.5 rounded-2xl border border-slate-700/80 text-xs">
+          <div className="text-center border-l border-slate-800 pl-3">
+            <span className="text-[10px] text-slate-400 block font-bold">معاملات اليوم</span>
+            <span className="text-base font-black text-emerald-400">{todayTransactionsCount} حجز</span>
+          </div>
+          <div className="text-center">
+            <span className="text-[10px] text-slate-400 block font-bold">أرباح اليوم</span>
+            <span className="text-base font-black text-purple-400">{formatCurrencyMRU(todayCommissionsMRU)}</span>
+          </div>
+        </div>
       </div>
 
       {/* Tabs */}
       <div className="flex flex-wrap items-center gap-2 border-b border-slate-800 pb-4 mb-8 text-xs font-bold">
+        
+        {/* TAB 1: Applications */}
+        <button
+          onClick={() => setActiveTab('applications')}
+          className={`relative px-4 py-2.5 rounded-xl transition-all flex items-center gap-2 ${
+            activeTab === 'applications' ? 'bg-purple-600 text-white shadow-lg' : 'bg-slate-800/80 text-slate-300 hover:bg-slate-800'
+          }`}
+        >
+          <Building2 className="w-4 h-4" />
+          <span>طلبات الانضمام</span>
+          {pendingAppsCount > 0 && (
+            <span className="px-2 py-0.5 bg-amber-500 text-slate-950 font-black text-[10px] rounded-full animate-pulse">
+              {pendingAppsCount} معلق
+            </span>
+          )}
+        </button>
+
+        {/* TAB 2: Complaints */}
+        <button
+          onClick={() => setActiveTab('complaints')}
+          className={`relative px-4 py-2.5 rounded-xl transition-all flex items-center gap-2 ${
+            activeTab === 'complaints' ? 'bg-purple-600 text-white shadow-lg' : 'bg-slate-800/80 text-slate-300 hover:bg-slate-800'
+          }`}
+        >
+          <AlertCircle className="w-4 h-4" />
+          <span>نظام البلاغات والشكاوى</span>
+          {pendingComplaintsCount > 0 && (
+            <span className="px-2 py-0.5 bg-red-500 text-white font-black text-[10px] rounded-full">
+              {pendingComplaintsCount} جديد
+            </span>
+          )}
+        </button>
+
+        {/* TAB 3: KPI Metrics */}
         <button
           onClick={() => setActiveTab('kpi')}
           className={`px-4 py-2.5 rounded-xl transition-all ${
             activeTab === 'kpi' ? 'bg-purple-600 text-white shadow-lg' : 'bg-slate-800/80 text-slate-300 hover:bg-slate-800'
           }`}
         >
-          مؤشرات النظام والأرباح
+          معاملات اليوم والأرباح
         </button>
 
+        {/* TAB 4: Companies & Commission Edit */}
+        <button
+          onClick={() => setActiveTab('companies')}
+          className={`px-4 py-2.5 rounded-xl transition-all ${
+            activeTab === 'companies' ? 'bg-purple-600 text-white shadow-lg' : 'bg-slate-800/80 text-slate-300 hover:bg-slate-800'
+          }`}
+        >
+          شركات النقل والمستقلين ({companies.length})
+        </button>
+
+        {/* TAB 5: Commission Global Config */}
         <button
           onClick={() => setActiveTab('commission')}
           className={`px-4 py-2.5 rounded-xl transition-all ${
             activeTab === 'commission' ? 'bg-purple-600 text-white shadow-lg' : 'bg-slate-800/80 text-slate-300 hover:bg-slate-800'
           }`}
         >
-          إدارة العمولات
+          نسبة الربح العامة
         </button>
 
+        {/* TAB 6: QR Code Verification */}
         <button
           onClick={() => setActiveTab('qr_verifier')}
           className={`px-4 py-2.5 rounded-xl transition-all flex items-center gap-1.5 ${
@@ -151,76 +249,529 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
           }`}
         >
           <QrCode className="w-4 h-4" />
-          <span>التحقق من التذاكر (QR)</span>
+          <span>فحص التذاكر (QR)</span>
         </button>
 
-        <button
-          onClick={() => setActiveTab('companies')}
-          className={`px-4 py-2.5 rounded-xl transition-all ${
-            activeTab === 'companies' ? 'bg-purple-600 text-white shadow-lg' : 'bg-slate-800/80 text-slate-300 hover:bg-slate-800'
-          }`}
-        >
-          شركات النقل ({companies.length})
-        </button>
-
+        {/* TAB 7: Cities */}
         <button
           onClick={() => setActiveTab('cities')}
           className={`px-4 py-2.5 rounded-xl transition-all ${
             activeTab === 'cities' ? 'bg-purple-600 text-white shadow-lg' : 'bg-slate-800/80 text-slate-300 hover:bg-slate-800'
           }`}
         >
-          المدن والمسارات ({cities.length})
+          المدن والمحطات ({cities.length})
         </button>
 
+        {/* TAB 8: Broadcast Notifications */}
         <button
           onClick={() => setActiveTab('notifications')}
           className={`px-4 py-2.5 rounded-xl transition-all ${
             activeTab === 'notifications' ? 'bg-purple-600 text-white shadow-lg' : 'bg-slate-800/80 text-slate-300 hover:bg-slate-800'
           }`}
         >
-          إرسال إشعارات جماعية
+          إرسال إشعارات
         </button>
       </div>
 
-      {/* TAB 1: Key Metrics */}
+      {/* TAB 1: Partner Applications Review */}
+      {activeTab === 'applications' && (
+        <div className="space-y-6 text-xs">
+          
+          {/* App Filter Pills */}
+          <div className="flex items-center justify-between bg-slate-800/80 p-2 rounded-2xl border border-slate-700">
+            <div className="flex items-center gap-2">
+              <span className="text-slate-400 font-bold px-2">تصفية الطلبات:</span>
+              <button
+                onClick={() => setAppFilter('pending')}
+                className={`px-3 py-1.5 rounded-xl font-bold transition-all ${
+                  appFilter === 'pending' ? 'bg-amber-500 text-slate-950' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                المعلقة ({applications.filter(a => a.status === 'pending').length})
+              </button>
+
+              <button
+                onClick={() => setAppFilter('approved')}
+                className={`px-3 py-1.5 rounded-xl font-bold transition-all ${
+                  appFilter === 'approved' ? 'bg-emerald-500 text-slate-950' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                المقبولة ({applications.filter(a => a.status === 'approved').length})
+              </button>
+
+              <button
+                onClick={() => setAppFilter('rejected')}
+                className={`px-3 py-1.5 rounded-xl font-bold transition-all ${
+                  appFilter === 'rejected' ? 'bg-red-500 text-white' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                المرفوضة ({applications.filter(a => a.status === 'rejected').length})
+              </button>
+
+              <button
+                onClick={() => setAppFilter('all')}
+                className={`px-3 py-1.5 rounded-xl font-bold transition-all ${
+                  appFilter === 'all' ? 'bg-purple-600 text-white' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                الكل ({applications.length})
+              </button>
+            </div>
+          </div>
+
+          {/* Applications Cards Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {filteredApps.length === 0 ? (
+              <div className="col-span-2 text-center py-12 bg-slate-800/50 rounded-3xl border border-slate-700 text-slate-400 font-bold">
+                لا توجد طلبات انضمام في هذه الفئة حالياً.
+              </div>
+            ) : (
+              filteredApps.map((app) => (
+                <div
+                  key={app.id}
+                  className="bg-slate-800 border border-slate-700/80 rounded-3xl p-5 space-y-4 shadow-lg hover:border-slate-600 transition-all"
+                >
+                  <div className="flex items-center justify-between border-b border-slate-700/60 pb-3">
+                    <div className="flex items-center gap-2">
+                      {app.type === 'company' ? (
+                        <div className="w-9 h-9 rounded-xl bg-blue-600/20 text-blue-400 border border-blue-500/30 flex items-center justify-center font-bold">
+                          <Building2 className="w-5 h-5" />
+                        </div>
+                      ) : (
+                        <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center font-bold">
+                          <Car className="w-5 h-5" />
+                        </div>
+                      )}
+
+                      <div>
+                        <h3 className="font-extrabold text-sm text-white">
+                          {app.type === 'company' ? app.companyName : `${app.driverName} (ناقل مستقل)`}
+                        </h3>
+                        <p className="text-[10px] text-slate-400">
+                          {app.type === 'company' ? `المسؤول: ${app.managerName}` : `السيارة: ${app.vehicleModel} (${app.plateNumber})`}
+                        </p>
+                      </div>
+                    </div>
+
+                    <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
+                      app.status === 'approved' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' :
+                      app.status === 'rejected' ? 'bg-red-500/20 text-red-400 border border-red-500/30' :
+                      'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                    }`}>
+                      {app.status === 'approved' ? 'معتمد ومقبول ✓' : app.status === 'rejected' ? 'مرفوض ✗' : 'معلق قيد المراجعة ⏳'}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 text-[11px] bg-slate-900/80 p-3 rounded-2xl border border-slate-800 text-slate-300">
+                    <div>
+                      <span className="text-slate-500 block">رقم الهاتف:</span>
+                      <strong className="text-white font-mono">{app.phone}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 block">البريد الإلكتروني:</span>
+                      <strong className="text-white font-mono">{app.email || 'غير متوفر'}</strong>
+                    </div>
+                    {app.commercialRegisterOrDoc && (
+                      <div className="col-span-2 pt-1 border-t border-slate-800">
+                        <span className="text-slate-500 block">السجل التجاري / الترخيص / الرخصة:</span>
+                        <strong className="text-purple-300">{app.commercialRegisterOrDoc}</strong>
+                      </div>
+                    )}
+                    {app.notes && (
+                      <div className="col-span-2">
+                        <span className="text-slate-500 block">تفاصيل أسطول العمل والملاحظات:</span>
+                        <p className="text-slate-300 mt-0.5">{app.notes}</p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Admin Note If Provided */}
+                  {app.adminNotes && (
+                    <div className="p-3 bg-purple-950/40 border border-purple-500/30 rounded-2xl text-[11px]">
+                      <span className="font-bold text-purple-300 block">ملاحظة المشرف:</span>
+                      <p className="text-slate-200 mt-0.5">{app.adminNotes}</p>
+                    </div>
+                  )}
+
+                  {/* Admin Action Buttons */}
+                  {app.status === 'pending' && (
+                    <div className="pt-2 border-t border-slate-700/60 flex items-center gap-2">
+                      <button
+                        onClick={() => {
+                          setSelectedApp(app);
+                          setAdminNoteInput('تم مراجعة بيانات الوثائق والاعتماد بنجاح! يسعدنا انضمامكم لشركة وسفر موريتانيا.');
+                        }}
+                        className="flex-1 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-xl transition-all flex items-center justify-center gap-1.5 shadow-md"
+                      >
+                        <Check className="w-4 h-4 stroke-[3]" />
+                        <span>قبول الطلب وتفعيل الحساب</span>
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          setSelectedApp(app);
+                          setAdminNoteInput('يرجى تقديم بيانات السجل التجاري المعتمد أو توضيح معلومات الترخيص.');
+                        }}
+                        className="px-4 py-2.5 bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 font-bold rounded-xl transition-all"
+                      >
+                        رفض
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+
+          {/* Modal for Writing Admin Notes & Confirmation */}
+          {selectedApp && (
+            <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4">
+              <div className="bg-slate-900 border border-slate-700 rounded-3xl p-6 max-w-md w-full space-y-4 text-white text-right">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                  <h3 className="font-bold text-base">اتخاذ إجراء بشأن طلب الانضمام</h3>
+                  <button onClick={() => setSelectedApp(null)} className="p-1 text-slate-400 hover:text-white">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="text-xs space-y-1">
+                  <p>الجهة الطالبة: <strong className="text-white">{selectedApp.companyName || selectedApp.driverName}</strong></p>
+                  <p>رقم الهاتف: <strong className="text-emerald-400 font-mono">{selectedApp.phone}</strong></p>
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1 text-xs">ملاحظة ورسالة المشرف لمقدم الطلب *</label>
+                  <textarea
+                    rows={3}
+                    value={adminNoteInput}
+                    onChange={(e) => setAdminNoteInput(e.target.value)}
+                    className="w-full bg-slate-800 border border-slate-700 rounded-xl p-3 text-xs text-white"
+                    placeholder="يكتب المشرف هنا ملاحظته المباشرة..."
+                  ></textarea>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 pt-2">
+                  <button
+                    onClick={() => {
+                      onApproveApplication(selectedApp.id, adminNoteInput);
+                      setSelectedApp(null);
+                      alert('تمت الموافقة على الطلب بنجاح وإنشاء حساب الشركة المعتمدة!');
+                    }}
+                    className="py-3 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-xl text-xs"
+                  >
+                    تأكيد القبول والتفعيل ✓
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      onRejectApplication(selectedApp.id, adminNoteInput);
+                      setSelectedApp(null);
+                      alert('تم تسجيل رفض الطلب وإرسال الملاحظة لمقدم الطلب.');
+                    }}
+                    className="py-3 bg-red-600 hover:bg-red-500 text-white font-bold rounded-xl text-xs"
+                  >
+                    تأكيد الرفض ✗
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+        </div>
+      )}
+
+      {/* TAB 2: Complaints & Reports System */}
+      {activeTab === 'complaints' && (
+        <div className="space-y-4 text-xs">
+          <div className="flex items-center justify-between bg-slate-800 p-4 rounded-2xl border border-slate-700">
+            <div>
+              <h3 className="font-extrabold text-sm text-white">نظام البلاغات والشكاوى الواردة من المسافرين</h3>
+              <p className="text-slate-400 text-[11px] mt-0.5">
+                متابعة البلاغات المتعلقة بالتأخيرات، سلوك السائقين، أو مشاكل التكييف والتذاكر.
+              </p>
+            </div>
+
+            <span className="px-3 py-1 bg-red-500/20 text-red-400 border border-red-500/30 font-bold rounded-full text-[11px]">
+              إجمالي البلاغات: {complaints.length}
+            </span>
+          </div>
+
+          <div className="space-y-3">
+            {complaints.length === 0 ? (
+              <div className="text-center py-12 bg-slate-800/50 rounded-3xl border border-slate-700 text-slate-400 font-bold">
+                لا توجد بلاغات أو شكاوى مسجلة في الوقت الحالي.
+              </div>
+            ) : (
+              complaints.map(c => (
+                <div key={c.id} className="bg-slate-800 border border-slate-700/80 rounded-3xl p-5 space-y-3">
+                  <div className="flex items-center justify-between border-b border-slate-700/60 pb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="px-2.5 py-0.5 bg-red-500/20 text-red-400 border border-red-500/30 rounded-lg font-bold text-[10px]">
+                        {c.typeAr}
+                      </span>
+                      <strong className="text-white text-sm">{c.reporterName} ({c.reporterPhone})</strong>
+                    </div>
+
+                    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                      c.status === 'resolved' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-300'
+                    }`}>
+                      {c.status === 'resolved' ? 'تم الحل والمتابعة ✓' : 'معلق قيد التحقيق ⏳'}
+                    </span>
+                  </div>
+
+                  <p className="text-slate-200 bg-slate-900/80 p-3 rounded-2xl border border-slate-800">
+                    الشركة المعنية: <strong className="text-purple-300">{c.companyName || 'غير محدد'}</strong>
+                    <br />
+                    تفاصيل البلاغ: {c.description}
+                  </p>
+
+                  {c.adminResponse ? (
+                    <div className="p-3 bg-purple-950/40 border border-purple-500/30 rounded-2xl text-[11px]">
+                      <span className="font-bold text-purple-300 block">إجراء الرد من الإدارة:</span>
+                      <p className="text-slate-200 mt-0.5">{c.adminResponse}</p>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 pt-1">
+                      <button
+                        onClick={() => {
+                          setSelectedComplaint(c);
+                          setComplaintResponseInput('تم التواصل مع المشرف في محطة الشركة ومعالجة الملاحظة فوراً.');
+                        }}
+                        className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-xl text-xs transition-all flex items-center gap-1.5"
+                      >
+                        <MessageSquare className="w-3.5 h-3.5" />
+                        <span>رد ومعالجة البلاغ</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+
+          {/* Modal for Resolving Complaint */}
+          {selectedComplaint && (
+            <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4">
+              <div className="bg-slate-900 border border-slate-700 rounded-3xl p-6 max-w-md w-full space-y-4 text-white text-right text-xs">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                  <h3 className="font-bold text-sm">معالجة البلاغ والرد على صاحب الشكوى</h3>
+                  <button onClick={() => setSelectedComplaint(null)} className="p-1 text-slate-400 hover:text-white">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1">اجراء ومعالجة الإدارة *</label>
+                  <textarea
+                    rows={3}
+                    value={complaintResponseInput}
+                    onChange={(e) => setComplaintResponseInput(e.target.value)}
+                    className="w-full bg-slate-800 border border-slate-700 rounded-xl p-3 text-white"
+                  ></textarea>
+                </div>
+
+                <button
+                  onClick={() => {
+                    onResolveComplaint(selectedComplaint.id, complaintResponseInput);
+                    setSelectedComplaint(null);
+                    alert('تم حفظ الرد ومعالجة البلاغ بنجاح!');
+                  }}
+                  className="w-full py-3 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-xl text-xs"
+                >
+                  حفظ الرد وحل الشكوى ✓
+                </button>
+              </div>
+            </div>
+          )}
+
+        </div>
+      )}
+
+      {/* TAB 3: Key Metrics & Real-time Transactions */}
       {activeTab === 'kpi' && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="bg-slate-800 border border-slate-700/80 rounded-2xl p-5">
-            <span className="text-xs text-slate-400 font-bold block mb-1">أرباح عمولات Safar MR</span>
-            <span className="text-2xl font-black text-emerald-400">{formatCurrencyMRU(totalPlatformCommissionsEarned)}</span>
-            <span className="text-[10px] text-slate-400 block mt-1">صافي أرباح المنصة المباشرة</span>
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="bg-slate-800 border border-slate-700/80 rounded-3xl p-5">
+              <span className="text-xs text-slate-400 font-bold block mb-1">عدد المعاملات التي تمت اليوم</span>
+              <span className="text-3xl font-black text-emerald-400 font-mono">{todayTransactionsCount} حجز</span>
+              <span className="text-[10px] text-slate-400 block mt-1">تذاكر وحجوزات جديدة اليوم</span>
+            </div>
+
+            <div className="bg-slate-800 border border-slate-700/80 rounded-3xl p-5">
+              <span className="text-xs text-slate-400 font-bold block mb-1">حجم مبيعات اليوم الإجمالي</span>
+              <span className="text-2xl font-black text-white">{formatCurrencyMRU(todayVolumeMRU)}</span>
+              <span className="text-[10px] text-slate-400 block mt-1">قيمة الحجوزات المصدرة اليوم</span>
+            </div>
+
+            <div className="bg-slate-800 border border-slate-700/80 rounded-3xl p-5">
+              <span className="text-xs text-slate-400 font-bold block mb-1">أرباح عمولة المنصة اليوم</span>
+              <span className="text-2xl font-black text-purple-400">{formatCurrencyMRU(todayCommissionsMRU)}</span>
+              <span className="text-[10px] text-slate-400 block mt-1">صافي أرباح Safar MR المقتطعة</span>
+            </div>
+
+            <div className="bg-slate-800 border border-slate-700/80 rounded-3xl p-5">
+              <span className="text-xs text-slate-400 font-bold block mb-1">إجمالي التداولات التراكمية</span>
+              <span className="text-2xl font-black text-blue-400">{formatCurrencyMRU(totalVolumeMRU)}</span>
+              <span className="text-[10px] text-slate-400 block mt-1">إجمالي حجم المبيعات الكلي</span>
+            </div>
           </div>
 
-          <div className="bg-slate-800 border border-slate-700/80 rounded-2xl p-5">
-            <span className="text-xs text-slate-400 font-bold block mb-1">إجمالي التداولات النقدية</span>
-            <span className="text-2xl font-black text-white">{formatCurrencyMRU(totalVolumeMRU)}</span>
-            <span className="text-[10px] text-slate-400 block mt-1">قيمة كافة الحجوزات المصدرة</span>
-          </div>
+          <div className="bg-slate-800 border border-slate-700/80 rounded-3xl p-6 text-xs space-y-3">
+            <h3 className="font-extrabold text-sm text-white">سجل أحدث المعاملات والحجوزات اليوم</h3>
+            <div className="space-y-2">
+              {todayBookings.length === 0 ? (
+                <div className="text-slate-400 text-center py-6">لا توجد حجوزات جديدة مسجلة اليوم حتى الآن.</div>
+              ) : (
+                todayBookings.map(b => (
+                  <div key={b.id} className="bg-slate-900/80 border border-slate-800 p-3 rounded-2xl flex items-center justify-between">
+                    <div>
+                      <span className="font-mono text-emerald-400 font-bold">#{b.bookingCode}</span> - <strong className="text-white">{b.passengerName}</strong> ({b.tripDetails.companyName})
+                      <p className="text-[10px] text-slate-400">{b.tripDetails.originAr} ← {b.tripDetails.destinationAr} • المقاعد: {b.seats.join(', ')}</p>
+                    </div>
 
-          <div className="bg-slate-800 border border-slate-700/80 rounded-2xl p-5">
-            <span className="text-xs text-slate-400 font-bold block mb-1">عدد شركات النقل المسجلة</span>
-            <span className="text-2xl font-black text-blue-400">{companies.length} شركة</span>
-            <span className="text-[10px] text-slate-400 block mt-1">شركات النقل المعتمدة في الميدان</span>
-          </div>
-
-          <div className="bg-slate-800 border border-slate-700/80 rounded-2xl p-5">
-            <span className="text-xs text-slate-400 font-bold block mb-1">إجمالي الحجوزات</span>
-            <span className="text-2xl font-black text-purple-400">{bookings.length} حجز</span>
-            <span className="text-[10px] text-slate-400 block mt-1">تذاكر صادرة عبر المنصة</span>
+                    <div className="text-left">
+                      <span className="font-bold text-white block">{formatCurrencyMRU(b.totalPriceMRU)}</span>
+                      <span className="text-[10px] text-purple-400">عمولة: {formatCurrencyMRU(b.commissionMRU)}</span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         </div>
       )}
 
-      {/* TAB 2: Commission Configurator */}
+      {/* TAB 4: Manage Companies & Commissions */}
+      {activeTab === 'companies' && (
+        <div className="space-y-4 text-xs">
+          <div className="bg-slate-800 border border-slate-700 p-4 rounded-2xl flex items-center justify-between">
+            <div>
+              <h3 className="font-extrabold text-sm text-white">قائمة شركات النقل والناقلين المستقلين المعتمدين</h3>
+              <p className="text-slate-400 text-[11px] mt-0.5">يمكن للمشرف تعديل نسبة أو قيمة العمولة لكل شركة على حدة، وتراها الشركات بشفافية.</p>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            {companies.map(c => (
+              <div key={c.id} className="bg-slate-800 border border-slate-700/80 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <img src={c.logo} alt={c.name} className="w-12 h-12 rounded-2xl object-cover" referrerPolicy="no-referrer" />
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h4 className="font-extrabold text-white text-sm">{c.nameAr}</h4>
+                      {c.verified && (
+                        <span className="px-2 py-0.5 bg-emerald-500/20 text-emerald-400 text-[10px] font-bold rounded-full border border-emerald-500/30">
+                          موثق ✓
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-slate-400 text-[11px] mt-0.5">{c.phone} • {c.email}</p>
+                    <p className="text-purple-300 font-bold text-[11px] mt-1">
+                      العمولة المعتمدة: {c.commissionType === 'fixed' ? `${c.commissionValue} أوقية (ثابتة)` : `${c.commissionValue}% (نسبة مئوية)`}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      setEditingCompany(c);
+                      setCompCommType(c.commissionType);
+                      setCompCommVal(c.commissionValue);
+                    }}
+                    className="px-3.5 py-2 bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/30 rounded-xl font-bold transition-all"
+                  >
+                    تعديل نسبة الربح ⚙️
+                  </button>
+
+                  <button
+                    onClick={() => onToggleVerifyCompany(c.id)}
+                    className={`px-3 py-2 rounded-xl font-bold transition-all ${
+                      c.verified ? 'bg-slate-900 text-slate-400 border border-slate-700' : 'bg-emerald-500 text-slate-950 font-black'
+                    }`}
+                  >
+                    {c.verified ? 'إلغاء التوثيق' : 'توثيق الآن'}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Edit Individual Company Commission Modal */}
+          {editingCompany && (
+            <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4">
+              <div className="bg-slate-900 border border-slate-700 rounded-3xl p-6 max-w-md w-full space-y-4 text-white text-right text-xs">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                  <h3 className="font-bold text-sm">تعديل نسبة أرباح شركة: {editingCompany.nameAr}</h3>
+                  <button onClick={() => setEditingCompany(null)} className="p-1 text-slate-400 hover:text-white">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-bold mb-2">نوع العمولة</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setCompCommType('fixed')}
+                      className={`py-2 rounded-xl font-bold border transition-all ${
+                        compCommType === 'fixed' ? 'bg-purple-600 text-white border-purple-400' : 'bg-slate-800 border-slate-700 text-slate-400'
+                      }`}
+                    >
+                      مبلغ ثابت (أوقية)
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setCompCommType('percentage')}
+                      className={`py-2 rounded-xl font-bold border transition-all ${
+                        compCommType === 'percentage' ? 'bg-purple-600 text-white border-purple-400' : 'bg-slate-800 border-slate-700 text-slate-400'
+                      }`}
+                    >
+                      نسبة مئوية (%)
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1">
+                    {compCommType === 'fixed' ? 'القيمة الثابتة (MRU)' : 'النسبة المئوية (%)'}
+                  </label>
+                  <input
+                    type="number"
+                    value={compCommVal}
+                    onChange={(e) => setCompCommVal(Number(e.target.value))}
+                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 text-white font-bold"
+                  />
+                </div>
+
+                <button
+                  onClick={() => {
+                    onUpdateCompanyCommission(editingCompany.id, compCommType, compCommVal);
+                    setEditingCompany(null);
+                    alert('تم تعديل نسبة عمولة الشركة بنجاح!');
+                  }}
+                  className="w-full py-3 bg-purple-600 hover:bg-purple-500 text-white font-black rounded-xl text-xs"
+                >
+                  حفظ العمولة للشركة
+                </button>
+              </div>
+            </div>
+          )}
+
+        </div>
+      )}
+
+      {/* TAB 5: Global Commission Config */}
       {activeTab === 'commission' && (
         <div className="max-w-xl bg-slate-800 border border-slate-700/80 rounded-3xl p-6 text-xs space-y-4">
-          <h2 className="text-base font-bold text-white mb-2">إعدادات ونسب عمولة المنصة</h2>
+          <h2 className="text-base font-bold text-white mb-2">إعدادات ونسب عمولة المنصة العامة</h2>
           <p className="text-slate-300 mb-4">
-            تتيح هذه الإعدادات تحديد طريقة اقتطاع أرباح Safar MR تلقائياً من كل تذكرة مباعة.
+            تُطبق هذه النسبة تلقائياً على كل شركة جديدة تنضم للمنصة، ما لم يتم تخصيص قيمة فردية لها.
           </p>
 
           <div>
-            <label className="block text-slate-300 font-bold mb-2">طريقة احتساب العمولة الإفراضية</label>
+            <label className="block text-slate-300 font-bold mb-2">طريقة احتساب العمولة الإفتراضية</label>
             <div className="grid grid-cols-2 gap-3">
               <button
                 type="button"
@@ -269,7 +820,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
         </div>
       )}
 
-      {/* TAB 3: QR Code Verification Tool */}
+      {/* TAB 6: QR Code Verification */}
       {activeTab === 'qr_verifier' && (
         <div className="max-w-xl bg-slate-800 border border-slate-700/80 rounded-3xl p-6 text-xs space-y-4">
           <div className="flex items-center gap-2 text-emerald-400 font-bold text-sm mb-2">
@@ -318,36 +869,10 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
         </div>
       )}
 
-      {/* TAB 4: Manage Companies */}
-      {activeTab === 'companies' && (
-        <div className="space-y-3">
-          {companies.map(c => (
-            <div key={c.id} className="bg-slate-800 border border-slate-700/80 rounded-2xl p-4 flex items-center justify-between text-xs">
-              <div className="flex items-center gap-3">
-                <img src={c.logo} alt={c.name} className="w-10 h-10 rounded-xl object-cover" referrerPolicy="no-referrer" />
-                <div>
-                  <h4 className="font-bold text-white text-sm">{c.nameAr}</h4>
-                  <p className="text-slate-400">{c.phone} • {c.email}</p>
-                </div>
-              </div>
-
-              <button
-                onClick={() => onToggleVerifyCompany(c.id)}
-                className={`px-3 py-1.5 rounded-xl font-bold transition-all ${
-                  c.verified ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-slate-700 text-slate-300'
-                }`}
-              >
-                {c.verified ? 'شركة موثقة ✓' : 'توثيق الشركة'}
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* TAB 5: Manage Cities */}
+      {/* TAB 7: Manage Cities */}
       {activeTab === 'cities' && (
-        <div className="space-y-6 max-w-2xl">
-          <form onSubmit={handleCreateCity} className="bg-slate-800 border border-slate-700/80 rounded-2xl p-4 space-y-3 text-xs">
+        <div className="space-y-6 max-w-2xl text-xs">
+          <form onSubmit={handleCreateCity} className="bg-slate-800 border border-slate-700/80 rounded-2xl p-4 space-y-3">
             <h3 className="font-bold text-white">إضافة مدينة أو مقاطعة جديدة</h3>
             <div className="grid grid-cols-2 gap-3">
               <input
@@ -370,7 +895,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
             </button>
           </form>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs font-bold text-white">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 font-bold text-white">
             {cities.map(c => (
               <div key={c.id} className="bg-slate-800 border border-slate-700/80 p-3 rounded-xl flex items-center justify-between">
                 <span>{c.nameAr}</span>
@@ -381,7 +906,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
         </div>
       )}
 
-      {/* TAB 6: Send Broadcast Notifications */}
+      {/* TAB 8: Broadcast Notifications */}
       {activeTab === 'notifications' && (
         <form onSubmit={handleSendNotification} className="max-w-md bg-slate-800 border border-slate-700/80 rounded-3xl p-6 text-xs space-y-3">
           <h3 className="font-bold text-white text-sm">إرسال إشعار جماعي لجميع الركاب والشركات</h3>

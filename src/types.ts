@@ -1,4 +1,45 @@
-export type UserRole = 'passenger' | 'company_admin' | 'super_admin';
+export type UserRole = 'passenger' | 'company_admin' | 'independent_driver' | 'super_admin';
+
+export type ApplicationType = 'company' | 'independent_driver';
+export type ApplicationStatus = 'pending' | 'approved' | 'rejected';
+
+export interface PartnerApplication {
+  id: string;
+  userId: string;
+  type: ApplicationType;
+  // Company fields
+  companyName?: string;
+  managerName?: string;
+  // Independent driver fields
+  driverName?: string;
+  vehicleModel?: string;
+  plateNumber?: string;
+  licenseNumber?: string;
+  // Common fields
+  phone: string;
+  email: string;
+  commercialRegisterOrDoc?: string;
+  notes?: string;
+  status: ApplicationStatus;
+  adminNotes?: string;
+  createdAt: string;
+}
+
+export type ComplaintStatus = 'pending' | 'investigating' | 'resolved';
+
+export interface ComplaintReport {
+  id: string;
+  reporterName: string;
+  reporterPhone: string;
+  tripId?: string;
+  companyName?: string;
+  type: 'delay' | 'driver_behavior' | 'payment_issue' | 'vehicle_condition' | 'other';
+  typeAr: string;
+  description: string;
+  status: ComplaintStatus;
+  adminResponse?: string;
+  createdAt: string;
+}
 
 export interface UserProfile {
   id: string;
@@ -6,9 +47,11 @@ export interface UserProfile {
   email: string;
   phone: string;
   role: UserRole;
-  companyId?: string; // If user is company_admin
+  companyId?: string; // If user is company_admin or independent_driver
   favorites: string[]; // trip / route IDs
   createdAt: string;
+  applicationStatus?: ApplicationStatus;
+  adminNote?: string;
 }
 
 export interface City {

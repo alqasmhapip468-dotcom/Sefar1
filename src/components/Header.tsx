@@ -48,43 +48,37 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           </div>
 
-          {/* Mode Selector (Role Switcher Tabs for Easy Testing & Multi-user Context) */}
-          <div className="hidden md:flex items-center bg-slate-800/80 p-1 rounded-xl border border-slate-700/60">
-            <button
-              onClick={() => onRoleChange('passenger')}
-              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                currentRole === 'passenger'
-                  ? 'bg-emerald-500 text-slate-950 shadow-md'
-                  : 'text-slate-300 hover:text-white'
-              }`}
-            >
-              <User className="w-3.5 h-3.5" />
-              <span>الركاب المسافرون</span>
-            </button>
+          {/* Contextual Navigation Bar */}
+          <div className="hidden md:flex items-center gap-2">
+            {currentRole === 'super_admin' && (
+              <button
+                onClick={() => onRoleChange('super_admin')}
+                className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-xl text-xs font-bold shadow-lg shadow-purple-600/20 border border-purple-400/30"
+              >
+                <ShieldCheck className="w-4 h-4" />
+                <span>لوحة التحكم الرئيسية للمشرف العام</span>
+              </button>
+            )}
 
-            <button
-              onClick={() => onRoleChange('company_admin')}
-              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                currentRole === 'company_admin'
-                  ? 'bg-blue-600 text-white shadow-md'
-                  : 'text-slate-300 hover:text-white'
-              }`}
-            >
-              <Building2 className="w-3.5 h-3.5" />
-              <span>لوحة شركة النقل</span>
-            </button>
+            {(currentRole === 'company_admin' || currentRole === 'independent_driver') && (
+              <button
+                onClick={() => onRoleChange(currentRole)}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold shadow-lg shadow-blue-600/20 border border-blue-400/30"
+              >
+                <Building2 className="w-4 h-4" />
+                <span>لوحة تحكم الشركة / الناقل</span>
+              </button>
+            )}
 
-            <button
-              onClick={() => onRoleChange('super_admin')}
-              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                currentRole === 'super_admin'
-                  ? 'bg-purple-600 text-white shadow-md'
-                  : 'text-slate-300 hover:text-white'
-              }`}
-            >
-              <ShieldCheck className="w-3.5 h-3.5" />
-              <span>إدارة النظام Admin</span>
-            </button>
+            {currentRole === 'passenger' && (
+              <button
+                onClick={onOpenAuth}
+                className="flex items-center gap-2 px-3.5 py-2 bg-slate-800/80 hover:bg-slate-800 text-emerald-400 rounded-xl text-xs font-bold border border-emerald-500/30 transition-all hover:scale-105"
+              >
+                <Building2 className="w-3.5 h-3.5 text-emerald-400" />
+                <span>الانضمام كشركة نقل أو ناقل مستقل ✦</span>
+              </button>
+            )}
           </div>
 
           {/* Header Action Tools */}
@@ -144,25 +138,30 @@ export const Header: React.FC<HeaderProps> = ({
 
         </div>
 
-        {/* Mobile Role Switcher Sub-bar */}
-        <div className="flex md:hidden items-center justify-around pb-3 pt-1 border-t border-slate-800/80 text-xs font-medium">
+        {/* Mobile Quick Action Sub-bar */}
+        <div className="flex md:hidden items-center justify-around pb-3 pt-2 border-t border-slate-800/80 text-xs font-medium">
           <button
             onClick={() => onRoleChange('passenger')}
-            className={`px-3 py-1 rounded-lg ${currentRole === 'passenger' ? 'bg-emerald-500 text-slate-950 font-bold' : 'text-slate-400'}`}
+            className={`px-3 py-1.5 rounded-lg flex items-center gap-1 ${currentRole === 'passenger' ? 'bg-emerald-500/20 text-emerald-400 font-bold border border-emerald-500/30' : 'text-slate-400'}`}
           >
-            الركاب
+            <Bus className="w-3.5 h-3.5" />
+            <span>الرئيسية والرحلات</span>
           </button>
+          
           <button
-            onClick={() => onRoleChange('company_admin')}
-            className={`px-3 py-1 rounded-lg ${currentRole === 'company_admin' ? 'bg-blue-600 text-white font-bold' : 'text-slate-400'}`}
+            onClick={onOpenMyBookings}
+            className="px-3 py-1.5 rounded-lg text-slate-300 flex items-center gap-1"
           >
-            شركة النقل
+            <Ticket className="w-3.5 h-3.5 text-emerald-400" />
+            <span>تذاكري</span>
           </button>
+
           <button
-            onClick={() => onRoleChange('super_admin')}
-            className={`px-3 py-1 rounded-lg ${currentRole === 'super_admin' ? 'bg-purple-600 text-white font-bold' : 'text-slate-400'}`}
+            onClick={onOpenAuth}
+            className="px-3 py-1.5 rounded-lg text-slate-300 flex items-center gap-1"
           >
-            إدارة Admin
+            <Building2 className="w-3.5 h-3.5 text-blue-400" />
+            <span>الانضمام كشريك</span>
           </button>
         </div>
 

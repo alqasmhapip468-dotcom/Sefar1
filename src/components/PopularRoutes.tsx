@@ -1,22 +1,21 @@
 import React from 'react';
-import { ArrowLeft, Clock, MapPin, Sparkles, TrendingUp } from 'lucide-react';
+import { ArrowLeft, Clock, MapPin, TrendingUp, Bus } from 'lucide-react';
 import { formatCurrencyMRU } from '../lib/utils';
+import { Trip } from '../types';
 
 interface PopularRoutesProps {
   onSelectRoute: (originId: string, destId: string) => void;
+  trips?: Trip[];
 }
 
-export const POPULAR_ROUTES = [
+export const MAIN_CITY_ROUTES = [
   {
     originId: 'nkc',
     originAr: 'نواكشوط',
     destId: 'ndb',
     destAr: 'نواذيبو',
     duration: '5.5 ساعات',
-    startPrice: 500,
-    dailyTripsCount: 14,
-    badge: 'الأكثر حجزاً',
-    image: 'https://images.unsplash.com/photo-1570125909232-eb263c188f7e?w=500&auto=format&fit=crop&q=80'
+    badge: 'خط الشمال الرئيسي'
   },
   {
     originId: 'nkc',
@@ -24,10 +23,7 @@ export const POPULAR_ROUTES = [
     destId: 'kfa',
     destAr: 'كيفه',
     duration: '8 ساعات',
-    startPrice: 600,
-    dailyTripsCount: 8,
-    badge: 'طريق الأمل',
-    image: 'https://images.unsplash.com/photo-1509316975850-ff9c5deb0cd9?w=500&auto=format&fit=crop&q=80'
+    badge: 'طريق الأمل'
   },
   {
     originId: 'nkc',
@@ -35,10 +31,7 @@ export const POPULAR_ROUTES = [
     destId: 'rso',
     destAr: 'روصو',
     duration: '2.5 ساعة',
-    startPrice: 350,
-    dailyTripsCount: 10,
-    badge: 'الخط الجنوبي',
-    image: 'https://images.unsplash.com/photo-1517649763962-0c623266010b?w=500&auto=format&fit=crop&q=80'
+    badge: 'الخط الجنوبي'
   },
   {
     originId: 'ndb',
@@ -46,10 +39,7 @@ export const POPULAR_ROUTES = [
     destId: 'atr',
     destAr: 'أطار',
     duration: '5.5 ساعات',
-    startPrice: 550,
-    dailyTripsCount: 5,
-    badge: 'خط الشمال',
-    image: 'https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?w=500&auto=format&fit=crop&q=80'
+    badge: 'مسار آدرار'
   },
   {
     originId: 'kfa',
@@ -57,16 +47,13 @@ export const POPULAR_ROUTES = [
     destId: 'ayn',
     destAr: 'لعيون',
     duration: '3.5 ساعات',
-    startPrice: 400,
-    dailyTripsCount: 6,
-    badge: 'خط الشرق',
-    image: 'https://images.unsplash.com/photo-1509316975850-ff9c5deb0cd9?w=500&auto=format&fit=crop&q=80'
+    badge: 'خط الشرق'
   }
 ];
 
-export const PopularRoutes: React.FC<PopularRoutesProps> = ({ onSelectRoute }) => {
+export const PopularRoutes: React.FC<PopularRoutesProps> = ({ onSelectRoute, trips = [] }) => {
   return (
-    <section className="py-12 bg-slate-900/40 dark:bg-slate-950/40">
+    <section className="py-12 bg-slate-900/40 dark:bg-slate-950/40 border-t border-slate-800/80">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         
         {/* Section Header */}
@@ -74,81 +61,82 @@ export const PopularRoutes: React.FC<PopularRoutesProps> = ({ onSelectRoute }) =
           <div>
             <div className="flex items-center gap-2 text-emerald-400 font-bold text-xs mb-1">
               <TrendingUp className="w-4 h-4" />
-              <span>الوجهات الأكثر طلباً في موريتانيا</span>
+              <span>الوجهات والمسارات الرئيسية بين المدن</span>
             </div>
-            <h2 className="text-2xl sm:text-3xl font-black text-white">قسم أشهر الوجهات والمسارات</h2>
+            <h2 className="text-2xl sm:text-3xl font-black text-white">أشهر خطوط النقل بين المدن الموريتانية</h2>
           </div>
-          <p className="text-xs text-slate-400 max-w-md">
-            رحلات يومية متواصلة عبر حافلات وسيارات النقل المكيفة مع أسعار تنافسية وجداول زمنية دقيقة.
+          <p className="text-xs text-slate-400 max-w-md leading-relaxed">
+            اختر وجهتك المفضلة للاطلاع على الرحلات اليومية المعتمدة فور نشرها من قبل الشركات والناقلين المعتمدين.
           </p>
         </div>
 
-        {/* Grid of Route Cards */}
+        {/* Grid of Route Cards without fake images or fake prices */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
-          {POPULAR_ROUTES.map((route, idx) => (
-            <div
-              key={idx}
-              onClick={() => onSelectRoute(route.originId, route.destId)}
-              className="group relative bg-slate-800/80 hover:bg-slate-800 border border-slate-700/70 hover:border-emerald-500/50 rounded-2xl overflow-hidden transition-all duration-300 shadow-md hover:shadow-emerald-500/10 cursor-pointer flex flex-col justify-between"
-            >
-              
-              {/* Image Banner */}
-              <div className="relative h-32 w-full overflow-hidden">
-                <img
-                  src={route.image}
-                  alt={`${route.originAr} إلى ${route.destAr}`}
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 opacity-80"
-                  referrerPolicy="no-referrer"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/40 to-transparent"></div>
-                <span className="absolute top-2 right-2 px-2.5 py-0.5 bg-slate-950/80 text-emerald-400 border border-emerald-500/30 text-[10px] font-bold rounded-full">
-                  {route.badge}
-                </span>
-              </div>
+          {MAIN_CITY_ROUTES.map((route, idx) => {
+            // Find real trips matching this route if any
+            const matchingTrips = trips.filter(
+              t => t.originCityId === route.originId && t.destinationCityId === route.destId
+            );
+            const lowestPrice = matchingTrips.length > 0 
+              ? Math.min(...matchingTrips.map(t => t.priceMRU)) 
+              : null;
 
-              {/* Card Body */}
-              <div className="p-4 flex-1 flex flex-col justify-between">
+            return (
+              <div
+                key={idx}
+                onClick={() => onSelectRoute(route.originId, route.destId)}
+                className="group relative bg-slate-800/90 hover:bg-slate-800 border border-slate-700/80 hover:border-emerald-500/60 rounded-2xl p-5 transition-all duration-300 shadow-lg hover:shadow-emerald-500/10 cursor-pointer flex flex-col justify-between"
+              >
                 <div>
-                  <div className="flex items-center justify-between text-white font-extrabold text-base mb-2">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="px-2.5 py-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-bold rounded-lg">
+                      {route.badge}
+                    </span>
+                    <span className="text-[11px] text-slate-400 flex items-center gap-1">
+                      <Clock className="w-3 h-3 text-amber-400" />
+                      {route.duration}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between text-white font-extrabold text-base my-3 bg-slate-900/60 p-3 rounded-xl border border-slate-700/50">
                     <span className="flex items-center gap-1">
-                      <MapPin className="w-3.5 h-3.5 text-emerald-400" />
+                      <MapPin className="w-4 h-4 text-emerald-400" />
                       {route.originAr}
                     </span>
-                    <ArrowLeft className="w-4 h-4 text-slate-400 group-hover:text-emerald-400 group-hover:-translate-x-1 transition-all" />
+                    <ArrowLeft className="w-4 h-4 text-emerald-400 group-hover:-translate-x-1 transition-transform" />
                     <span className="flex items-center gap-1">
-                      <MapPin className="w-3.5 h-3.5 text-blue-400" />
+                      <MapPin className="w-4 h-4 text-blue-400" />
                       {route.destAr}
                     </span>
                   </div>
-
-                  <div className="flex items-center justify-between text-xs text-slate-400 mb-3">
-                    <span className="flex items-center gap-1">
-                      <Clock className="w-3.5 h-3.5 text-amber-400" />
-                      {route.duration}
-                    </span>
-                    <span className="text-slate-400">{route.dailyTripsCount} رحلة يومياً</span>
-                  </div>
                 </div>
 
-                {/* Price & Action */}
-                <div className="pt-3 border-t border-slate-700/60 flex items-center justify-between mt-2">
-                  <div>
-                    <span className="text-[10px] text-slate-400 block">تبدأ من</span>
-                    <span className="text-sm font-black text-emerald-400">{formatCurrencyMRU(route.startPrice)}</span>
-                  </div>
-                  <span className="text-xs font-bold text-slate-200 group-hover:text-white flex items-center gap-1">
-                    <span>احجز الآن</span>
+                {/* Footer status / real price */}
+                <div className="pt-3 border-t border-slate-700/60 flex items-center justify-between mt-3">
+                  {lowestPrice !== null ? (
+                    <div>
+                      <span className="text-[10px] text-slate-400 block">تبدأ من</span>
+                      <span className="text-sm font-black text-emerald-400">{formatCurrencyMRU(lowestPrice)}</span>
+                    </div>
+                  ) : (
+                    <span className="text-[11px] text-slate-400 flex items-center gap-1">
+                      <Bus className="w-3.5 h-3.5 text-slate-500" />
+                      <span>{matchingTrips.length} رحلات منشورة</span>
+                    </span>
+                  )}
+                  <span className="text-xs font-bold text-emerald-400 group-hover:text-emerald-300 flex items-center gap-1">
+                    <span>البحث الآن</span>
                     <ArrowLeft className="w-3.5 h-3.5" />
                   </span>
                 </div>
 
               </div>
-
-            </div>
-          ))}
+            );
+          })}
         </div>
 
       </div>
     </section>
   );
 };
+

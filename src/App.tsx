@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { UserRole, City, Company, Trip, Vehicle, Driver, Booking, Coupon, AdminSettings, UserProfile, VehicleType } from './types';
+import { UserRole, City, Company, Trip, Vehicle, Driver, Booking, Coupon, AdminSettings, UserProfile, VehicleType, PartnerApplication, ComplaintReport, CommissionType } from './types';
 import {
   INITIAL_CITIES,
   INITIAL_COMPANIES,
@@ -8,7 +8,9 @@ import {
   INITIAL_TRIPS,
   INITIAL_BOOKINGS,
   INITIAL_COUPONS,
-  INITIAL_ADMIN_SETTINGS
+  INITIAL_ADMIN_SETTINGS,
+  INITIAL_PARTNER_APPLICATIONS,
+  INITIAL_COMPLAINTS
 } from './data/mockData';
 import { Header } from './components/Header';
 import { Footer } from './components/Footer';
@@ -24,7 +26,7 @@ import { CompanyDashboard } from './components/CompanyDashboard';
 import { SuperAdminDashboard } from './components/SuperAdminDashboard';
 import { AiAssistantDrawer } from './components/AiAssistantDrawer';
 import { FaqPrivacyModal } from './components/FaqPrivacyModal';
-import { testFirebaseConnection } from './lib/firebase';
+import { testFirebaseConnection, auth, onAuthStateChanged, logoutFirebase } from './lib/firebase';
 
 export default function App() {
   // Theme State
@@ -38,9 +40,30 @@ export default function App() {
     }
   }, [darkMode]);
 
-  // Test Firebase initialization
+  // Firebase Auth State Listener
   useEffect(() => {
     testFirebaseConnection();
+
+    const unsubscribe = onAuthStateChanged(auth, (fbUser) => {
+      if (fbUser) {
+        const email = fbUser.email || '';
+        const isSuperAdmin = email.toLowerCase() === 'alqasmhapip468@gmail.com';
+        setUser({
+          id: fbUser.uid,
+          name: fbUser.displayName || (isSuperAdmin ? 'المشرف العام (Super Admin)' : (fbUser.phoneNumber ? `مستخدم (${fbUser.phoneNumber})` : email.split('@')[0] || 'مستخدم مسجل')),
+          email: email || (fbUser.phoneNumber ? `${fbUser.phoneNumber.replace(/\+/g, '')}@safar.mr` : 'user@safar.mr'),
+          phone: fbUser.phoneNumber || '+222 4525 1010',
+          role: isSuperAdmin ? 'super_admin' : 'passenger',
+          favorites: [],
+          createdAt: new Date().toISOString()
+        });
+        if (isSuperAdmin) {
+          setCurrentRole('super_admin');
+        }
+      }
+    });
+
+    return () => unsubscribe();
   }, []);
 
   // Role Context Switcher
@@ -55,20 +78,16 @@ export default function App() {
   const [bookings, setBookings] = useState<Booking[]>(INITIAL_BOOKINGS);
   const [coupons, setCoupons] = useState<Coupon[]>(INITIAL_COUPONS);
   const [adminSettings, setAdminSettings] = useState<AdminSettings>(INITIAL_ADMIN_SETTINGS);
+  
+  // Applications & Complaints State
+  const [partnerApplications, setPartnerApplications] = useState<PartnerApplication[]>(INITIAL_PARTNER_APPLICATIONS);
+  const [complaints, setComplaints] = useState<ComplaintReport[]>(INITIAL_COMPLAINTS);
 
   // Active Company Context for Company Dashboard
-  const [selectedCompanyId, setSelectedCompanyId] = useState<string>('sonef');
+  const [selectedCompanyId, setSelectedCompanyId] = useState<string>('');
 
   // Passenger Auth State
-  const [user, setUser] = useState<UserProfile | null>({
-    id: 'usr-1',
-    name: 'المختار ولد أحمد',
-    email: 'mokhtar@safar.mr',
-    phone: '+222 4525 1010',
-    role: 'passenger',
-    favorites: [],
-    createdAt: new Date().toISOString()
-  });
+  const [user, setUser] = useState<UserProfile | null>(null);
 
   // Search State
   const [originCityId, setOriginCityId] = useState<string>('nkc');
@@ -91,7 +110,6 @@ export default function App() {
   // Actions & Handlers
   const handleSearch = () => {
     setSearchPerformed(true);
-    // Smooth scroll down to search results
     const el = document.getElementById('search-results-section');
     if (el) el.scrollIntoView({ behavior: 'smooth' });
   };
@@ -145,6 +163,84 @@ export default function App() {
     setCities([...cities, newCity]);
   };
 
+  // Partner Application Approval Handler
+  const handleApproveApplication = (appId: string, adminNotes: string) => {
+    setPartnerApplications(apps => apps.map(a => a.id === appId ? { ...a, status: 'approved', adminNotes } : a));
+
+    const targetApp = partnerApplications.find(a => a.id === appId);
+    if (!targetApp) return;
+
+    // Check if company already exists
+    const compName = targetApp.companyName || targetApp.driverName || 'ناقل جديد';
+    const existingComp = companies.find(c => c.nameAr === compName || c.phone === targetApp.phone);
+
+    if (!existingComp) {
+      const newCompId = `comp-${Date.now()}`;
+      const newComp: Company = {
+        id: newCompId,
+        name: compName,
+        nameAr: compName,
+        logo: targetApp.type === 'company'
+          ? 'https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?w=150&auto=format&fit=crop&q=80'
+          : 'https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?w=150&auto=format&fit=crop&q=80',
+        rating: 5.0,
+        totalReviews: 1,
+        phone: targetApp.phone,
+        email: targetApp.email,
+        verified: true,
+        commissionType: adminSettings.defaultCommissionType,
+        commissionValue: adminSettings.defaultCommissionValue,
+        vehiclesCount: 1,
+        activeTripsCount: 0
+      };
+
+      setCompanies([...companies, newComp]);
+      setSelectedCompanyId(newCompId);
+    }
+  };
+
+  // Partner Application Rejection Handler
+  const handleRejectApplication = (appId: string, adminNotes: string) => {
+    setPartnerApplications(apps => apps.map(a => a.id === appId ? { ...a, status: 'rejected', adminNotes } : a));
+  };
+
+  // Complaint Resolution Handler
+  const handleResolveComplaint = (complaintId: string, response: string) => {
+    setComplaints(cmps => cmps.map(c => c.id === complaintId ? { ...c, status: 'resolved', adminResponse: response } : c));
+  };
+
+  // Individual Company Commission Update Handler
+  const handleUpdateCompanyCommission = (companyId: string, type: CommissionType, value: number) => {
+    setCompanies(companies.map(c => c.id === companyId ? { ...c, commissionType: type, commissionValue: value } : c));
+  };
+
+  // Submit new application
+  const handleSubmitPartnerApplication = (app: PartnerApplication) => {
+    setPartnerApplications([app, ...partnerApplications]);
+  };
+
+  // Submit new complaint
+  const handleSubmitComplaint = (complaint: ComplaintReport) => {
+    setComplaints([complaint, ...complaints]);
+  };
+
+  // Login Simulation with Role Capability
+  const handleLoginSimulate = (name: string, phone: string, email: string, role: UserRole = 'passenger') => {
+    setUser({
+      id: `usr-${Date.now()}`,
+      name,
+      phone,
+      email,
+      role,
+      favorites: [],
+      createdAt: new Date().toISOString()
+    });
+
+    if (role === 'super_admin') {
+      setCurrentRole('super_admin');
+    }
+  };
+
   // Filtered trips for active search criteria
   const filteredTrips = trips.filter(trip => {
     if (originCityId && trip.originCityId !== originCityId) return false;
@@ -175,7 +271,7 @@ export default function App() {
       {/* Main Body per Role */}
       <main className="flex-1">
         
-        {/* ROLE 1: Passenger View (الركاب المسافرون) */}
+        {/* ROLE 1: Passenger View */}
         {currentRole === 'passenger' && (
           <div>
             
@@ -197,7 +293,7 @@ export default function App() {
             />
 
             {/* Popular Routes Section */}
-            <PopularRoutes onSelectRoute={handleQuickRouteSelect} />
+            <PopularRoutes onSelectRoute={handleQuickRouteSelect} trips={trips} />
 
             {/* Platform Features Section */}
             <FeaturesSection />
@@ -221,7 +317,7 @@ export default function App() {
           </div>
         )}
 
-        {/* ROLE 2: Company Dashboard View (لوحة تحكم شركة النقل) */}
+        {/* ROLE 2: Company Dashboard View */}
         {currentRole === 'company_admin' && (
           <CompanyDashboard
             companies={companies}
@@ -237,16 +333,22 @@ export default function App() {
           />
         )}
 
-        {/* ROLE 3: Super Admin Panel View (لوحة تحكم المدير العام) */}
+        {/* ROLE 3: Super Admin Panel View */}
         {currentRole === 'super_admin' && (
           <SuperAdminDashboard
             companies={companies}
             cities={cities}
             bookings={bookings}
             adminSettings={adminSettings}
+            applications={partnerApplications}
+            complaints={complaints}
             onUpdateAdminSettings={setAdminSettings}
             onToggleVerifyCompany={handleToggleVerifyCompany}
             onAddCity={handleAddCity}
+            onApproveApplication={handleApproveApplication}
+            onRejectApplication={handleRejectApplication}
+            onResolveComplaint={handleResolveComplaint}
+            onUpdateCompanyCommission={handleUpdateCompanyCommission}
           />
         )}
 
@@ -291,24 +393,21 @@ export default function App() {
         <PassengerAccountModal
           user={user}
           bookings={bookings}
+          applications={partnerApplications}
+          complaints={complaints}
           onClose={() => setIsAccountModalOpen(false)}
           onViewBookingTicket={(b) => {
             setIsAccountModalOpen(false);
             setActiveTicket(b);
           }}
           onCancelBooking={handleCancelBooking}
-          onLoginSimulate={(name, phone, email) => {
-            setUser({
-              id: `usr-${Date.now()}`,
-              name,
-              phone,
-              email,
-              role: 'passenger',
-              favorites: [],
-              createdAt: new Date().toISOString()
-            });
+          onLoginSimulate={handleLoginSimulate}
+          onLogout={async () => {
+            await logoutFirebase();
+            setUser(null);
           }}
-          onLogout={() => setUser(null)}
+          onSubmitApplication={handleSubmitPartnerApplication}
+          onSubmitComplaint={handleSubmitComplaint}
         />
       )}
 

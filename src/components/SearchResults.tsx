@@ -248,9 +248,9 @@ export const SearchResults: React.FC<SearchResultsProps> = ({
           {filteredTrips.length === 0 ? (
             <div className="bg-slate-800/40 border border-slate-700 rounded-2xl p-12 text-center space-y-3">
               <Bus className="w-12 h-12 text-slate-600 mx-auto" />
-              <h3 className="text-lg font-bold text-white">لا توجد رحلات تتطابق مع معايير البحث الحالية</h3>
-              <p className="text-xs text-slate-400 max-w-md mx-auto">
-                يرجى تغيير التواريخ أو تصفية البحث للاطلاع على الرحلات اليومية المتاحة بين المدن الموريتانية.
+              <h3 className="text-lg font-bold text-white">لا توجد رحلات منشورة حالياً لهذه الوجهة</h3>
+              <p className="text-xs text-slate-400 max-w-md mx-auto leading-relaxed">
+                تظهر الرحلات والصور هنا فور انضمام شركات النقل والناقلين المستقلين وموافقة المشرف العام على طلبات الاعتماد ونشر الجداول الرسمية للرحلات.
               </p>
             </div>
           ) : (

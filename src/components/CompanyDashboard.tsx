@@ -30,6 +30,18 @@ export const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
 }) => {
   const currentCompany = companies.find(c => c.id === selectedCompanyId) || companies[0];
 
+  if (!currentCompany) {
+    return (
+      <div className="max-w-4xl mx-auto my-12 p-8 bg-slate-900 border border-slate-800 rounded-2xl text-center text-slate-300 font-sans">
+        <Building2 className="w-16 h-16 text-slate-600 mx-auto mb-4" />
+        <h2 className="text-xl font-bold text-white mb-2">لا توجد شركات نقل معتمدة حتى الآن</h2>
+        <p className="text-sm text-slate-400 max-w-lg mx-auto">
+          يمكن للشركات والناقلين تقديم طلب انضمام عبر زر "انضم إلينا كشركة"، وعند موافقة إدارة المنصة عليها في لوحة التحكم، ستظهر لوحة تحكم الشركة وإمكانية إضافة الرحلات والأدوات هنا.
+        </p>
+      </div>
+    );
+  }
+
   const companyTrips = trips.filter(t => t.companyId === currentCompany.id);
   const companyBookings = bookings.filter(b => companyTrips.some(t => t.id === b.tripId));
 
