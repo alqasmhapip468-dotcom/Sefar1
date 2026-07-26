@@ -1,0 +1,6 @@
+{
+  "name": "Safar MR | سفر موريتانيا",
+  "description": "منصة حجز رحلات السفر البرية والحافلات والسيارات بين مدن موريتانيا",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
