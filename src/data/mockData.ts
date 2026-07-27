@@ -144,9 +144,9 @@ export const INITIAL_BOOKINGS: Booking[] = [];
 export const INITIAL_ADMIN_SETTINGS: AdminSettings = {
   defaultCommissionType: 'fixed',
   defaultCommissionValue: 30, // 30 MRU per ticket
-  platformPhone: '+222 4525 0000',
-  platformEmail: 'support@safar.mr',
-  whatsappSupportNumber: '+222 2200 1122',
+  platformPhone: '+222 2779 8492',
+  platformEmail: '',
+  whatsappSupportNumber: '+222 2779 8492',
   enableSmsNotifications: true
 };
 

@@ -8,10 +8,10 @@ service cloud.firestore {
     }
 
     // Admin helper
-    function isSuperAdmin() {
+    function isAdmin() {
       return request.auth != null && (
         request.auth.token.email == 'alqasmhapip468@gmail.com' ||
-        request.auth.uid == 'superadmin'
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'super_admin']
       );
     }
 
@@ -22,9 +22,26 @@ service cloud.firestore {
 
     // Users Collection
     match /users/{userId} {
-      allow read: if request.auth != null && (request.auth.uid == userId || isSuperAdmin());
-      allow create, update: if request.auth != null && (request.auth.uid == userId || isSuperAdmin());
-      allow delete: if request.auth != null && (request.auth.uid == userId || isSuperAdmin());
+      allow get: if request.auth != null && (request.auth.uid == userId || isAdmin());
+      allow list: if request.auth != null && isAdmin();
+
+      allow create: if request.auth != null && (
+        isAdmin() || (
+          request.auth.uid == userId && 
+          request.resource.data.role in ['customer', 'passenger', 'pending_company'] &&
+          request.resource.data.status == 'active'
+        )
+      );
+
+      allow update: if request.auth != null && (
+        isAdmin() || (
+          request.auth.uid == userId &&
+          request.resource.data.role == resource.data.role &&
+          request.resource.data.status == resource.data.status
+        )
+      );
+
+      allow delete: if request.auth != null && (request.auth.uid == userId || isAdmin());
     }
 
     // Trips Collection

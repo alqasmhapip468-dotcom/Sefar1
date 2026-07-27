@@ -1,5 +1,5 @@
 import React from 'react';
-import { Bus, Phone, Mail, MapPin, ShieldCheck, Heart } from 'lucide-react';
+import { Bus, Phone, ShieldCheck } from 'lucide-react';
 import { useTranslation } from '../lib/i18n';
 
 interface FooterProps {
@@ -76,20 +76,12 @@ export const Footer: React.FC<FooterProps> = ({ onOpenFaq }) => {
             </div>
           </div>
 
-          {/* Col 4: Contact & Office */}
+          {/* Col 4: Contact & Support */}
           <div className="space-y-3">
             <h3 className="text-slate-900 dark:text-white font-bold text-base mb-4">{isAr ? "التواصل والدعم الفني" : "Contact & Support"}</h3>
             <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
-              <MapPin className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-              <span>{isAr ? "نواكشوط، تفرغ زينه - قرب كارفور مدريد" : "Nouakchott, Tevragh Zeina"}</span>
-            </div>
-            <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
               <Phone className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-              <span dir="ltr">+222 4525 0000 / +222 2200 1122</span>
-            </div>
-            <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
-              <Mail className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-              <span>contact@safar.mr</span>
+              <span dir="ltr">+222 2779 8492</span>
             </div>
             <button
               onClick={onOpenFaq}

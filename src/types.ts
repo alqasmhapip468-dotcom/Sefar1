@@ -1,4 +1,25 @@
-export type UserRole = 'passenger' | 'company_admin' | 'independent_driver' | 'super_admin';
+export type UserRole = 
+  | 'customer' 
+  | 'company' 
+  | 'admin' 
+  | 'pending_company' 
+  | 'passenger' 
+  | 'company_admin' 
+  | 'independent_driver' 
+  | 'super_admin';
+
+export type UserStatus = 'active' | 'suspended';
+
+export interface UserRecord {
+  uid: string;
+  name: string;
+  phone: string;
+  email: string;
+  role: UserRole;
+  status: UserStatus;
+  companyId?: string | null;
+  createdAt: string;
+}
 
 export type ApplicationType = 'company' | 'independent_driver';
 export type ApplicationStatus = 'pending' | 'approved' | 'rejected';
@@ -47,7 +68,8 @@ export interface UserProfile {
   email: string;
   phone: string;
   role: UserRole;
-  companyId?: string; // If user is company_admin or independent_driver
+  status: UserStatus;
+  companyId?: string | null;
   favorites: string[]; // trip / route IDs
   createdAt: string;
   applicationStatus?: ApplicationStatus;

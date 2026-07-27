@@ -14,7 +14,20 @@ import {
   type ConfirmationResult,
   type User
 } from 'firebase/auth';
-import { getFirestore, doc, getDoc, setDoc, deleteDoc, getDocFromServer } from 'firebase/firestore';
+import { 
+  getFirestore, 
+  doc, 
+  getDoc, 
+  setDoc, 
+  getDocs,
+  collection, 
+  deleteDoc, 
+  getDocFromServer,
+  updateDoc,
+  query,
+  limit
+} from 'firebase/firestore';
+import { UserRecord, UserRole, UserStatus } from '../types';
 
 const firebaseConfig = {
   apiKey: "AIzaSyCxmAAyA3mADDDIUldLjlPQLTw7jix-Rho",
@@ -32,50 +45,82 @@ export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const googleProvider = new GoogleAuthProvider();
 
-export interface UserRecord {
-  uid: string;
-  name: string;
-  phone: string;
-  email: string;
-  role: 'passenger' | 'company_admin' | 'independent_driver' | 'super_admin';
-  createdAt: string;
-}
-
-export async function loginWithGoogle(): Promise<UserRecord> {
-  const result = await signInWithPopup(auth, googleProvider);
-  const user = result.user;
+/**
+ * Helper to ensure user document exists in `users/{uid}`
+ */
+export async function ensureUserDocInFirestore(user: User, customName?: string, customPhone?: string): Promise<UserRecord> {
   const userEmail = (user.email || '').toLowerCase();
   const isSuperAdminEmail = userEmail === 'alqasmhapip468@gmail.com';
-
   const userDocRef = doc(db, 'users', user.uid);
-  const snap = await getDoc(userDocRef);
 
-  if (snap.exists()) {
-    const data = snap.data() as UserRecord;
-    // If user's email is the admin email, ensure role in Firestore is super_admin
-    if (isSuperAdminEmail && data.role !== 'super_admin') {
-      data.role = 'super_admin';
-      await setDoc(userDocRef, { role: 'super_admin' }, { merge: true });
+  try {
+    const snap = await getDoc(userDocRef);
+
+    if (snap.exists()) {
+      const data = snap.data() as UserRecord;
+
+      // Check if suspended
+      if (data.status === 'suspended') {
+        await signOut(auth);
+        throw new Error('حسابك معطل حالياً من قبل الإدارة. يرجى التواصل مع الدعم الفني.');
+      }
+
+      // Automatically upgrade primary email to admin
+      if (isSuperAdminEmail && (data.role !== 'admin' && data.role !== 'super_admin')) {
+        const updated = { ...data, role: 'admin' as UserRole };
+        await setDoc(userDocRef, { role: 'admin' }, { merge: true });
+        return updated;
+      }
+
+      return data;
     }
-    return data;
+  } catch (err: any) {
+    if (err.message && err.message.includes('معطل')) {
+      throw err;
+    }
+    console.warn("Notice checking user doc:", err);
   }
 
-  const userData: UserRecord = {
+  // Determine user role (If user collection is empty, make first registered account admin)
+  let assignedRole: UserRole = isSuperAdminEmail ? 'admin' : 'customer';
+
+  if (!isSuperAdminEmail) {
+    try {
+      const usersSnap = await getDocs(query(collection(db, 'users'), limit(1)));
+      if (usersSnap.empty) {
+        assignedRole = 'admin';
+      }
+    } catch (err) {
+      console.warn("Notice checking if users collection is empty:", err);
+    }
+  }
+
+  // Auto-create missing user document in Firestore with UID as Document ID
+  const newRecord: UserRecord = {
     uid: user.uid,
-    name: isSuperAdminEmail ? 'المشرف العام (Super Admin)' : (user.displayName || 'مسافر موريتاني'),
-    phone: user.phoneNumber || '+222 4525 1010',
-    email: user.email || 'user@safar.mr',
-    role: isSuperAdminEmail ? 'super_admin' : 'passenger',
+    name: assignedRole === 'admin' 
+      ? (customName || user.displayName || 'المشرف العام (Admin)')
+      : (customName || user.displayName || 'مستخدم جديد'),
+    phone: customPhone || user.phoneNumber || '+222 2779 8492',
+    email: userEmail || 'user@safar.mr',
+    role: assignedRole,
+    status: 'active',
+    companyId: null,
     createdAt: new Date().toISOString()
   };
 
   try {
-    await setDoc(userDocRef, userData);
+    await setDoc(userDocRef, newRecord);
   } catch (err) {
-    console.warn("Error setting user doc on Google login:", err);
+    console.warn("Firestore setDoc user record error:", err);
   }
 
-  return userData;
+  return newRecord;
+}
+
+export async function loginWithGoogle(): Promise<UserRecord> {
+  const result = await signInWithPopup(auth, googleProvider);
+  return await ensureUserDocInFirestore(result.user);
 }
 
 export async function registerAccountInFirebase(
@@ -87,7 +132,6 @@ export async function registerAccountInFirebase(
   const cleanPhone = phone.trim();
   const cleanName = name.trim();
   const cleanEmail = email.trim().toLowerCase() || `${cleanPhone.replace(/\D/g, '')}@safar.mr`;
-  const isSuperAdminEmail = cleanEmail === 'alqasmhapip468@gmail.com';
 
   // 1. Create User in Firebase Auth
   const userCred = await createUserWithEmailAndPassword(auth, cleanEmail, pass);
@@ -100,23 +144,8 @@ export async function registerAccountInFirebase(
     console.warn("Could not set displayName:", e);
   }
 
-  const userData: UserRecord = {
-    uid: user.uid,
-    name: isSuperAdminEmail ? 'المشرف العام (Super Admin)' : cleanName,
-    phone: cleanPhone || '+222 4525 1010',
-    email: cleanEmail,
-    role: isSuperAdminEmail ? 'super_admin' : 'passenger',
-    createdAt: new Date().toISOString()
-  };
-
-  // 3. Save User Document in Firestore `users/{uid}`
-  try {
-    await setDoc(doc(db, 'users', user.uid), userData);
-  } catch (err) {
-    console.warn("Firestore setDoc user record error:", err);
-  }
-
-  return userData;
+  // 3. Create document in Firestore `users/{user.uid}`
+  return await ensureUserDocInFirestore(user, cleanName, cleanPhone);
 }
 
 export async function loginAccountInFirebase(
@@ -131,62 +160,85 @@ export async function loginAccountInFirebase(
     emailToUse = `${digits}@safar.mr`;
   }
 
-  const isSuperAdminEmail = emailToUse === 'alqasmhapip468@gmail.com';
-
-  // Pure login call - NEVER auto-creates user
   const userCred = await signInWithEmailAndPassword(auth, emailToUse, pass);
-  const user = userCred.user;
-
-  // Fetch Firestore Profile
-  const userDocRef = doc(db, 'users', user.uid);
-  const userSnap = await getDoc(userDocRef);
-
-  if (userSnap.exists()) {
-    const data = userSnap.data() as UserRecord;
-    if (isSuperAdminEmail && data.role !== 'super_admin') {
-      data.role = 'super_admin';
-      await setDoc(userDocRef, { role: 'super_admin' }, { merge: true });
-    }
-    return data;
-  } else {
-    const fallbackData: UserRecord = {
-      uid: user.uid,
-      name: isSuperAdminEmail ? 'المشرف العام (Super Admin)' : (user.displayName || identifier.split('@')[0]),
-      phone: user.phoneNumber || identifier,
-      email: user.email || emailToUse,
-      role: isSuperAdminEmail ? 'super_admin' : 'passenger',
-      createdAt: new Date().toISOString()
-    };
-    try {
-      await setDoc(userDocRef, fallbackData);
-    } catch (e) {
-      console.warn("Error creating fallback doc:", e);
-    }
-    return fallbackData;
-  }
-}
-
-export async function upgradeUserToSuperAdmin(uid: string, secretKey: string): Promise<boolean> {
-  const ADMIN_SECRET = 'safar2026';
-  if (secretKey.trim() !== ADMIN_SECRET) {
-    throw new Error('رمز تفعيل الإدارة غير صحيح! يرجى إدخال المفتاح الصحيح.');
-  }
-
-  const userDocRef = doc(db, 'users', uid);
-  await setDoc(userDocRef, { role: 'super_admin' }, { merge: true });
-  return true;
+  return await ensureUserDocInFirestore(userCred.user, identifier.split('@')[0], identifier);
 }
 
 export async function fetchUserProfileFromFirestore(uid: string): Promise<UserRecord | null> {
   try {
-    const snap = await getDoc(doc(db, 'users', uid));
+    const userDocRef = doc(db, 'users', uid);
+    const snap = await getDoc(userDocRef);
+
     if (snap.exists()) {
-      return snap.data() as UserRecord;
+      const data = snap.data() as UserRecord;
+      if (data.status === 'suspended') {
+        await signOut(auth);
+        throw new Error('حسابك معطل حالياً من قبل الإدارة. يرجى التواصل مع الدعم الفني.');
+      }
+      return data;
+    } else if (auth.currentUser) {
+      // Automatic doc creation for existing auth user without Firestore record
+      return await ensureUserDocInFirestore(auth.currentUser);
     }
-  } catch (err) {
+  } catch (err: any) {
+    if (err.message && err.message.includes('معطل')) {
+      throw err;
+    }
     console.warn("Error fetching user profile from Firestore:", err);
   }
   return null;
+}
+
+/**
+ * User Management APIs for Admin Panel
+ */
+export async function fetchAllUsersFromFirestore(): Promise<UserRecord[]> {
+  try {
+    const querySnapshot = await getDocs(collection(db, 'users'));
+    const usersList: UserRecord[] = [];
+    querySnapshot.forEach((docSnap) => {
+      const data = docSnap.data() as UserRecord;
+      usersList.push({
+        ...data,
+        uid: docSnap.id
+      });
+    });
+    return usersList;
+  } catch (err) {
+    console.warn("Error fetching users collection from Firestore:", err);
+    return [];
+  }
+}
+
+export async function updateUserRoleAndStatusInFirestore(
+  uid: string, 
+  role: UserRole, 
+  status: UserStatus,
+  companyId?: string | null
+): Promise<void> {
+  const userRef = doc(db, 'users', uid);
+  const updateData: any = { role, status };
+  if (companyId !== undefined) {
+    updateData.companyId = companyId;
+  }
+  await updateDoc(userRef, updateData);
+}
+
+export async function approveCompanyPartnerRequest(uid: string): Promise<void> {
+  const userRef = doc(db, 'users', uid);
+  await updateDoc(userRef, {
+    role: 'company',
+    status: 'active',
+    companyId: uid
+  });
+}
+
+export async function rejectCompanyPartnerRequest(uid: string): Promise<void> {
+  const userRef = doc(db, 'users', uid);
+  await updateDoc(userRef, {
+    role: 'customer',
+    status: 'active'
+  });
 }
 
 export async function deleteAccountInFirebase(): Promise<void> {
@@ -246,5 +298,3 @@ export async function testFirebaseConnection(): Promise<boolean> {
     return false;
   }
 }
-
-

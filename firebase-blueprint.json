@@ -10,9 +10,11 @@
         "phone": { "type": "string" },
         "email": { "type": "string" },
         "role": { "type": "string" },
+        "status": { "type": "string" },
+        "companyId": { "type": "string" },
         "createdAt": { "type": "string" }
       },
-      "required": ["uid", "name", "phone", "email", "role"]
+      "required": ["uid", "name", "phone", "email", "role", "status"]
     },
     "trip": {
       "title": "Intercity Transport Trip",

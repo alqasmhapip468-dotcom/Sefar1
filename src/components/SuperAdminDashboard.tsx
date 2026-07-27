@@ -1,7 +1,51 @@
-import React, { useState } from 'react';
-import { ShieldCheck, Building2, MapPin, Users, Ticket, DollarSign, Bell, QrCode, CheckCircle2, AlertCircle, Plus, Search, Settings, Car, Check, X, MessageSquare, Clock, FileText } from 'lucide-react';
-import { Company, City, Booking, AdminSettings, CommissionType, PartnerApplication, ComplaintReport } from '../types';
+import React, { useState, useEffect } from 'react';
+import { 
+  ShieldCheck, 
+  Building2, 
+  MapPin, 
+  Users, 
+  Ticket, 
+  DollarSign, 
+  Bell, 
+  QrCode, 
+  CheckCircle2, 
+  AlertCircle, 
+  Plus, 
+  Search, 
+  Settings, 
+  Car, 
+  Check, 
+  X, 
+  MessageSquare, 
+  Clock, 
+  FileText,
+  Edit3,
+  UserCheck,
+  UserX,
+  Filter,
+  UserCog,
+  RefreshCw,
+  Lock
+} from 'lucide-react';
+import { 
+  Company, 
+  City, 
+  Booking, 
+  AdminSettings, 
+  CommissionType, 
+  PartnerApplication, 
+  ComplaintReport,
+  UserRecord,
+  UserRole,
+  UserStatus
+} from '../types';
 import { formatCurrencyMRU } from '../lib/utils';
+import { 
+  fetchAllUsersFromFirestore, 
+  updateUserRoleAndStatusInFirestore, 
+  approveCompanyPartnerRequest, 
+  rejectCompanyPartnerRequest 
+} from '../lib/firebase';
 
 interface SuperAdminDashboardProps {
   companies: Company[];
@@ -34,7 +78,20 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
   onResolveComplaint,
   onUpdateCompanyCommission
 }) => {
-  const [activeTab, setActiveTab] = useState<'applications' | 'complaints' | 'kpi' | 'commission' | 'companies' | 'cities' | 'qr_verifier' | 'notifications'>('applications');
+  const [activeTab, setActiveTab] = useState<'users' | 'applications' | 'complaints' | 'kpi' | 'commission' | 'companies' | 'cities' | 'qr_verifier' | 'notifications'>('users');
+
+  // Firestore Users State (User Management)
+  const [usersList, setUsersList] = useState<UserRecord[]>([]);
+  const [isLoadingUsers, setIsLoadingUsers] = useState<boolean>(false);
+  const [userSearchTerm, setUserSearchTerm] = useState<string>('');
+  const [userRoleFilter, setUserRoleFilter] = useState<string>('all');
+  const [userStatusFilter, setUserStatusFilter] = useState<string>('all');
+
+  // Edit User Modal State
+  const [editingUser, setEditingUser] = useState<UserRecord | null>(null);
+  const [editRole, setEditRole] = useState<UserRole>('customer');
+  const [editStatus, setEditStatus] = useState<UserStatus>('active');
+  const [isSavingUser, setIsSavingUser] = useState<boolean>(false);
 
   // Applications Filter & Modal State
   const [appFilter, setAppFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('pending');
@@ -68,6 +125,73 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
   const [notifMessage, setNotifMessage] = useState('');
   const [notifSent, setNotifSent] = useState(false);
 
+  // Load Users from Firestore
+  const loadUsers = async () => {
+    setIsLoadingUsers(true);
+    try {
+      const fetched = await fetchAllUsersFromFirestore();
+      setUsersList(fetched);
+    } catch (err) {
+      console.warn("Could not load users:", err);
+    } finally {
+      setIsLoadingUsers(false);
+    }
+  };
+
+  useEffect(() => {
+    loadUsers();
+  }, [activeTab]);
+
+  // Handle Edit User Submit
+  const handleSaveUserEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingUser) return;
+
+    setIsSavingUser(true);
+    try {
+      await updateUserRoleAndStatusInFirestore(
+        editingUser.uid,
+        editRole,
+        editStatus,
+        editRole === 'company' ? editingUser.uid : null
+      );
+
+      setUsersList(prev => prev.map(u => u.uid === editingUser.uid ? {
+        ...u,
+        role: editRole,
+        status: editStatus
+      } : u));
+
+      setEditingUser(null);
+      alert(`تم تعديل صلاحيات وحالة المستخدم (${editingUser.name}) بنجاح في Firestore!`);
+    } catch (err: any) {
+      alert(err?.message || 'حدث خطأ أثناء حفظ التعديلات');
+    } finally {
+      setIsSavingUser(false);
+    }
+  };
+
+  // Quick Approve Partner Request from User List or Applications Page
+  const handleApprovePartnerUser = async (uid: string, userName: string) => {
+    try {
+      await approveCompanyPartnerRequest(uid);
+      setUsersList(prev => prev.map(u => u.uid === uid ? { ...u, role: 'company', status: 'active', companyId: uid } : u));
+      alert(`تم قبول طلب شركة النقل للمستخدم (${userName}) بنجاح وتحويل حسابه إلى شركة!`);
+    } catch (err: any) {
+      alert(err?.message || 'حدث خطأ أثناء تنفيذ القبول');
+    }
+  };
+
+  const handleRejectPartnerUser = async (uid: string, userName: string) => {
+    try {
+      await rejectCompanyPartnerRequest(uid);
+      setUsersList(prev => prev.map(u => u.uid === uid ? { ...u, role: 'customer', status: 'active' } : u));
+      alert(`تم رفض الطلب وإعادة دور المستخدم (${userName}) إلى عميل عادي.`);
+    } catch (err: any) {
+      alert(err?.message || 'حدث خطأ أثناء تنفيذ الرفض');
+    }
+  };
+
   // Calculate Today's Real-time Transactions & Stats
   const todayStr = new Date().toISOString().split('T')[0];
   const todayBookings = bookings.filter(b => b.createdAt.startsWith(todayStr) || b.tripDetails.departureDate === todayStr);
@@ -76,9 +200,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
   const todayCommissionsMRU = todayBookings.reduce((sum, b) => sum + b.commissionMRU, 0);
 
   const totalVolumeMRU = bookings.reduce((sum, b) => sum + b.totalPriceMRU, 0);
-  const totalPlatformCommissionsEarned = bookings.reduce((sum, b) => sum + b.commissionMRU, 0);
-
-  const pendingAppsCount = applications.filter(a => a.status === 'pending').length;
+  const pendingAppsCount = applications.filter(a => a.status === 'pending').length + usersList.filter(u => u.role === 'pending_company').length;
   const pendingComplaintsCount = complaints.filter(c => c.status === 'pending').length;
 
   const handleVerifyQR = (e: React.FormEvent) => {
@@ -142,6 +264,84 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
     return a.status === appFilter;
   });
 
+  // Filter Users
+  const filteredUsers = usersList.filter(u => {
+    const q = userSearchTerm.toLowerCase();
+    const matchesSearch = 
+      !q || 
+      u.name.toLowerCase().includes(q) || 
+      u.email.toLowerCase().includes(q) || 
+      u.phone.toLowerCase().includes(q) ||
+      u.uid.toLowerCase().includes(q);
+
+    const matchesRole = 
+      userRoleFilter === 'all' ? true :
+      userRoleFilter === 'customer' ? (u.role === 'customer' || u.role === 'passenger') :
+      userRoleFilter === 'company' ? (u.role === 'company' || u.role === 'company_admin' || u.role === 'independent_driver') :
+      userRoleFilter === 'admin' ? (u.role === 'admin' || u.role === 'super_admin') :
+      u.role === userRoleFilter;
+
+    const matchesStatus = 
+      userStatusFilter === 'all' ? true : u.status === userStatusFilter;
+
+    return matchesSearch && matchesRole && matchesStatus;
+  });
+
+  const getRoleBadge = (role: UserRole) => {
+    switch (role) {
+      case 'admin':
+      case 'super_admin':
+        return (
+          <span className="px-2.5 py-1 bg-purple-500/20 text-purple-300 border border-purple-500/30 text-[10px] font-bold rounded-full flex items-center gap-1 w-fit">
+            <ShieldCheck className="w-3 h-3 text-purple-400" />
+            <span>مشرف عام (Admin)</span>
+          </span>
+        );
+      case 'company':
+      case 'company_admin':
+      case 'independent_driver':
+        return (
+          <span className="px-2.5 py-1 bg-blue-500/20 text-blue-300 border border-blue-500/30 text-[10px] font-bold rounded-full flex items-center gap-1 w-fit">
+            <Building2 className="w-3 h-3 text-blue-400" />
+            <span>شركة نقل (Company)</span>
+          </span>
+        );
+      case 'pending_company':
+        return (
+          <span className="px-2.5 py-1 bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-bold rounded-full flex items-center gap-1 animate-pulse w-fit">
+            <Clock className="w-3 h-3 text-amber-400" />
+            <span>طلب شركة معلق (Pending)</span>
+          </span>
+        );
+      case 'customer':
+      case 'passenger':
+      default:
+        return (
+          <span className="px-2.5 py-1 bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold rounded-full flex items-center gap-1 w-fit">
+            <Users className="w-3 h-3 text-emerald-400" />
+            <span>عميل (Customer)</span>
+          </span>
+        );
+    }
+  };
+
+  const getStatusBadge = (status: UserStatus) => {
+    if (status === 'suspended') {
+      return (
+        <span className="px-2.5 py-1 bg-red-500/20 text-red-400 border border-red-500/30 text-[10px] font-bold rounded-full flex items-center gap-1 w-fit">
+          <UserX className="w-3 h-3" />
+          <span>معطل (Suspended)</span>
+        </span>
+      );
+    }
+    return (
+      <span className="px-2.5 py-1 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px] font-bold rounded-full flex items-center gap-1 w-fit">
+        <UserCheck className="w-3 h-3" />
+        <span>نشط (Active)</span>
+      </span>
+    );
+  };
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 text-right font-sans dir-rtl text-slate-100" dir="rtl">
       
@@ -155,16 +355,20 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
             <div className="flex items-center gap-2">
               <h1 className="text-2xl font-black text-white">لوحة الإدارة الرئيسية (Super Admin)</h1>
               <span className="px-2.5 py-0.5 bg-purple-500/20 text-purple-300 border border-purple-500/30 text-[10px] font-bold rounded-full">
-                الحساب الإداري الرئيسي ⚡
+                نظام Firebase RBAC المعتمد ⚡
               </span>
             </div>
             <p className="text-xs text-slate-400 mt-0.5">
-              مراجعة طلبات الشركات والمستقلين، ضبط نسب العمولات، متابعة البلاغات، وإحصائيات المعاملات اليومية
+              إدارة مستخدمي Firestore والصلاحيات (Role/Status)، مراجعة طلبات الشركات، والتحكم بالعمولات والخدمات
             </p>
           </div>
         </div>
 
         <div className="flex items-center gap-3 bg-slate-900/90 px-4 py-2.5 rounded-2xl border border-slate-700/80 text-xs">
+          <div className="text-center border-l border-slate-800 pl-3">
+            <span className="text-[10px] text-slate-400 block font-bold">المستخدمون المسجلون</span>
+            <span className="text-base font-black text-purple-400">{usersList.length} مستخدم</span>
+          </div>
           <div className="text-center border-l border-slate-800 pl-3">
             <span className="text-[10px] text-slate-400 block font-bold">معاملات اليوم</span>
             <span className="text-base font-black text-emerald-400">{todayTransactionsCount} حجز</span>
@@ -176,10 +380,21 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
         </div>
       </div>
 
-      {/* Tabs */}
+      {/* Tabs Bar */}
       <div className="flex flex-wrap items-center gap-2 border-b border-slate-800 pb-4 mb-8 text-xs font-bold">
         
-        {/* TAB 1: Applications */}
+        {/* TAB 1: User Management (إدارة المستخدمين) */}
+        <button
+          onClick={() => setActiveTab('users')}
+          className={`relative px-4 py-2.5 rounded-xl transition-all flex items-center gap-2 ${
+            activeTab === 'users' ? 'bg-purple-600 text-white shadow-lg' : 'bg-slate-800/80 text-slate-300 hover:bg-slate-800'
+          }`}
+        >
+          <Users className="w-4 h-4" />
+          <span>إدارة المستخدمين ({usersList.length})</span>
+        </button>
+
+        {/* TAB 2: Applications (طلبات شركات النقل) */}
         <button
           onClick={() => setActiveTab('applications')}
           className={`relative px-4 py-2.5 rounded-xl transition-all flex items-center gap-2 ${
@@ -187,7 +402,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
           }`}
         >
           <Building2 className="w-4 h-4" />
-          <span>طلبات الانضمام</span>
+          <span>طلبات شركات النقل</span>
           {pendingAppsCount > 0 && (
             <span className="px-2 py-0.5 bg-amber-500 text-slate-950 font-black text-[10px] rounded-full animate-pulse">
               {pendingAppsCount} معلق
@@ -195,7 +410,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
           )}
         </button>
 
-        {/* TAB 2: Complaints */}
+        {/* TAB 3: Complaints */}
         <button
           onClick={() => setActiveTab('complaints')}
           className={`relative px-4 py-2.5 rounded-xl transition-all flex items-center gap-2 ${
@@ -211,7 +426,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
           )}
         </button>
 
-        {/* TAB 3: KPI Metrics */}
+        {/* TAB 4: KPI Metrics */}
         <button
           onClick={() => setActiveTab('kpi')}
           className={`px-4 py-2.5 rounded-xl transition-all ${
@@ -221,7 +436,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
           معاملات اليوم والأرباح
         </button>
 
-        {/* TAB 4: Companies & Commission Edit */}
+        {/* TAB 5: Companies */}
         <button
           onClick={() => setActiveTab('companies')}
           className={`px-4 py-2.5 rounded-xl transition-all ${
@@ -231,7 +446,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
           شركات النقل والمستقلين ({companies.length})
         </button>
 
-        {/* TAB 5: Commission Global Config */}
+        {/* TAB 6: Commission Global Config */}
         <button
           onClick={() => setActiveTab('commission')}
           className={`px-4 py-2.5 rounded-xl transition-all ${
@@ -241,7 +456,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
           نسبة الربح العامة
         </button>
 
-        {/* TAB 6: QR Code Verification */}
+        {/* TAB 7: QR Code Verification */}
         <button
           onClick={() => setActiveTab('qr_verifier')}
           className={`px-4 py-2.5 rounded-xl transition-all flex items-center gap-1.5 ${
@@ -252,7 +467,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
           <span>فحص التذاكر (QR)</span>
         </button>
 
-        {/* TAB 7: Cities */}
+        {/* TAB 8: Cities */}
         <button
           onClick={() => setActiveTab('cities')}
           className={`px-4 py-2.5 rounded-xl transition-all ${
@@ -262,7 +477,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
           المدن والمحطات ({cities.length})
         </button>
 
-        {/* TAB 8: Broadcast Notifications */}
+        {/* TAB 9: Broadcast Notifications */}
         <button
           onClick={() => setActiveTab('notifications')}
           className={`px-4 py-2.5 rounded-xl transition-all ${
@@ -273,14 +488,329 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
         </button>
       </div>
 
-      {/* TAB 1: Partner Applications Review */}
+      {/* ========================================== */}
+      {/* TAB 1: User Management Page (إدارة المستخدمين) */}
+      {/* ========================================== */}
+      {activeTab === 'users' && (
+        <div className="space-y-6 text-xs">
+          
+          {/* Header & Search / Filters Bar */}
+          <div className="bg-slate-800/90 border border-slate-700 p-4 rounded-3xl space-y-4">
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div>
+                <h2 className="text-base font-extrabold text-white flex items-center gap-2">
+                  <UserCog className="w-5 h-5 text-purple-400" />
+                  <span>جدول إدارة جميع مستخدمي Firestore وصلاحيات الأدوار (RBAC)</span>
+                </h2>
+                <p className="text-slate-400 text-[11px] mt-0.5">
+                  تتيح لك هذه الصفحة التحكم الكامل بالحسابات، تغيير الصلاحيات (Role)، وتفعيل أو تعطيل (Status) أي مستخدم.
+                </p>
+              </div>
+
+              <button
+                onClick={loadUsers}
+                disabled={isLoadingUsers}
+                className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white font-bold rounded-xl transition-all flex items-center gap-2 shrink-0"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isLoadingUsers ? 'animate-spin' : ''}`} />
+                <span>تحديث القائمة من Firestore</span>
+              </button>
+            </div>
+
+            {/* Filter Inputs */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-2 border-t border-slate-700/60">
+              {/* Search Bar */}
+              <div className="relative">
+                <Search className="w-4 h-4 absolute right-3 top-3 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="ابحث بالاسم، البريد، رقم الهاتف، أو UID..."
+                  value={userSearchTerm}
+                  onChange={(e) => setUserSearchTerm(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl pr-9 pl-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-purple-500"
+                />
+              </div>
+
+              {/* Role Filter */}
+              <div>
+                <select
+                  value={userRoleFilter}
+                  onChange={(e) => setUserRoleFilter(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-purple-500 font-bold"
+                >
+                  <option value="all">تصفية حسب الدور (جميع الأدوار)</option>
+                  <option value="customer">عميل (customer)</option>
+                  <option value="company">شركة نقل (company)</option>
+                  <option value="admin">مدير نظام (admin)</option>
+                  <option value="pending_company">طلب شركة معلق (pending_company)</option>
+                </select>
+              </div>
+
+              {/* Status Filter */}
+              <div>
+                <select
+                  value={userStatusFilter}
+                  onChange={(e) => setUserStatusFilter(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-purple-500 font-bold"
+                >
+                  <option value="all">تصفية حسب الحالة (الكل)</option>
+                  <option value="active">حسابات نشطة (active)</option>
+                  <option value="suspended">حسابات معطلة (suspended)</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Users List Grid / Table */}
+          {isLoadingUsers ? (
+            <div className="text-center py-12 bg-slate-800/40 rounded-3xl border border-slate-700 text-slate-400 font-bold flex items-center justify-center gap-2">
+              <RefreshCw className="w-5 h-5 animate-spin text-purple-400" />
+              <span>جاري تحميل بيانات المستخدمين مباشرة من Firestore...</span>
+            </div>
+          ) : filteredUsers.length === 0 ? (
+            <div className="text-center py-12 bg-slate-800/40 rounded-3xl border border-slate-700 text-slate-400 font-bold">
+              لم يتم العثور على أي مستخدمين يطابقون خيارات البحث والتصفية.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {filteredUsers.map((u) => (
+                <div
+                  key={u.uid}
+                  className="bg-slate-800 border border-slate-700/80 rounded-3xl p-5 space-y-4 shadow-lg hover:border-slate-600 transition-all flex flex-col justify-between"
+                >
+                  <div className="space-y-3">
+                    {/* User Header */}
+                    <div className="flex items-start justify-between border-b border-slate-700/60 pb-3">
+                      <div>
+                        <h3 className="font-extrabold text-sm text-white flex items-center gap-1.5">
+                          <span>{u.name}</span>
+                        </h3>
+                        <p className="text-[10px] text-slate-400 font-mono mt-0.5 select-all">
+                          UID: {u.uid}
+                        </p>
+                      </div>
+
+                      <div className="flex flex-col items-end gap-1">
+                        {getRoleBadge(u.role)}
+                        {getStatusBadge(u.status || 'active')}
+                      </div>
+                    </div>
+
+                    {/* User Info Details */}
+                    <div className="grid grid-cols-2 gap-2 text-[11px] bg-slate-900/80 p-3 rounded-2xl border border-slate-800">
+                      <div>
+                        <span className="text-slate-500 block">البريد الإلكتروني:</span>
+                        <strong className="text-white font-mono break-all">{u.email || 'غير مسجل'}</strong>
+                      </div>
+
+                      <div>
+                        <span className="text-slate-500 block">رقم الهاتف:</span>
+                        <strong className="text-emerald-400 font-mono">{u.phone || 'غير مسجل'}</strong>
+                      </div>
+
+                      <div className="col-span-2 pt-1.5 border-t border-slate-800 flex justify-between items-center text-[10px] text-slate-400">
+                        <span>تاريخ إنشاء الحساب:</span>
+                        <strong className="text-slate-300 font-mono">
+                          {u.createdAt ? new Date(u.createdAt).toLocaleDateString('ar-MA') : 'غير محدد'}
+                        </strong>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Actions Bar */}
+                  <div className="pt-2 border-t border-slate-700/60 flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        setEditingUser(u);
+                        setEditRole(u.role || 'customer');
+                        setEditStatus(u.status || 'active');
+                      }}
+                      className="flex-1 py-2.5 bg-purple-600 hover:bg-purple-500 text-white font-extrabold rounded-xl transition-all flex items-center justify-center gap-1.5 shadow-md"
+                    >
+                      <Edit3 className="w-3.5 h-3.5" />
+                      <span>تعديل الصلاحيات والحالة</span>
+                    </button>
+
+                    {u.role === 'pending_company' && (
+                      <button
+                        onClick={() => handleApprovePartnerUser(u.uid, u.name)}
+                        className="px-3 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-xl text-[11px] transition-all flex items-center gap-1"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        <span>قبول الشركة</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Modal for Editing Role & Status */}
+          {editingUser && (
+            <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4">
+              <form onSubmit={handleSaveUserEdit} className="bg-slate-900 border border-slate-700 rounded-3xl p-6 max-w-md w-full space-y-5 text-white text-right">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                  <div>
+                    <h3 className="font-extrabold text-sm text-white">تعديل بيانات وصلاحيات المستخدم</h3>
+                    <p className="text-[11px] text-slate-400">{editingUser.name} ({editingUser.email})</p>
+                  </div>
+                  <button type="button" onClick={() => setEditingUser(null)} className="p-1 text-slate-400 hover:text-white">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {/* Select Role */}
+                <div className="space-y-2">
+                  <label className="block text-slate-200 font-bold text-xs">اختر الدور الجديد (Role) *</label>
+                  <div className="space-y-2">
+                    <label className={`flex items-center justify-between p-3 rounded-2xl border cursor-pointer transition-all ${
+                      editRole === 'customer' ? 'bg-emerald-500/10 border-emerald-500/50 text-white font-bold' : 'bg-slate-800 border-slate-700 text-slate-300'
+                    }`}>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="radio"
+                          name="roleRadio"
+                          value="customer"
+                          checked={editRole === 'customer' || editRole === 'passenger'}
+                          onChange={() => setEditRole('customer')}
+                          className="accent-emerald-500"
+                        />
+                        <div>
+                          <strong className="block text-xs">عميل عادي (customer)</strong>
+                          <span className="text-[10px] text-slate-400">حساب مسافر لحجز الرحلات والتذاكر</span>
+                        </div>
+                      </div>
+                    </label>
+
+                    <label className={`flex items-center justify-between p-3 rounded-2xl border cursor-pointer transition-all ${
+                      editRole === 'company' ? 'bg-blue-500/10 border-blue-500/50 text-white font-bold' : 'bg-slate-800 border-slate-700 text-slate-300'
+                    }`}>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="radio"
+                          name="roleRadio"
+                          value="company"
+                          checked={editRole === 'company' || editRole === 'company_admin'}
+                          onChange={() => setEditRole('company')}
+                          className="accent-blue-500"
+                        />
+                        <div>
+                          <strong className="block text-xs">شركة نقل (company)</strong>
+                          <span className="text-[10px] text-slate-400">حساب شركة لإضافة وتدبير الرحلات والمركبات</span>
+                        </div>
+                      </div>
+                    </label>
+
+                    <label className={`flex items-center justify-between p-3 rounded-2xl border cursor-pointer transition-all ${
+                      editRole === 'admin' ? 'bg-purple-500/10 border-purple-500/50 text-white font-bold' : 'bg-slate-800 border-slate-700 text-slate-300'
+                    }`}>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="radio"
+                          name="roleRadio"
+                          value="admin"
+                          checked={editRole === 'admin' || editRole === 'super_admin'}
+                          onChange={() => setEditRole('admin')}
+                          className="accent-purple-500"
+                        />
+                        <div>
+                          <strong className="block text-xs">مدير النظام (admin)</strong>
+                          <span className="text-[10px] text-slate-400">صلاحيات كاملة للوحة التحكم الرئيسية والإدارة</span>
+                        </div>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Select Status */}
+                <div className="space-y-2">
+                  <label className="block text-slate-200 font-bold text-xs">حالة الحساب (Status) *</label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setEditStatus('active')}
+                      className={`py-2.5 px-3 rounded-xl font-bold border transition-all text-xs flex items-center justify-center gap-1.5 ${
+                        editStatus === 'active' ? 'bg-emerald-500 text-slate-950 border-emerald-400 font-black' : 'bg-slate-800 border-slate-700 text-slate-400'
+                      }`}
+                    >
+                      <UserCheck className="w-4 h-4" />
+                      <span>نشط (Active)</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setEditStatus('suspended')}
+                      className={`py-2.5 px-3 rounded-xl font-bold border transition-all text-xs flex items-center justify-center gap-1.5 ${
+                        editStatus === 'suspended' ? 'bg-red-500 text-white border-red-400 font-black' : 'bg-slate-800 border-slate-700 text-slate-400'
+                      }`}
+                    >
+                      <UserX className="w-4 h-4" />
+                      <span>معطل (Suspended)</span>
+                    </button>
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isSavingUser}
+                  className="w-full py-3 bg-purple-600 hover:bg-purple-500 text-white font-black rounded-xl text-xs shadow-lg transition-all"
+                >
+                  {isSavingUser ? 'جاري حفظ التغييرات...' : 'حفظ التعديلات في Firestore ✓'}
+                </button>
+              </form>
+            </div>
+          )}
+
+        </div>
+      )}
+
+      {/* ========================================== */}
+      {/* TAB 2: Partner Applications Review Page */}
+      {/* ========================================== */}
       {activeTab === 'applications' && (
         <div className="space-y-6 text-xs">
           
+          {/* Pending Requests from Firestore users collection */}
+          {usersList.filter(u => u.role === 'pending_company').length > 0 && (
+            <div className="bg-amber-950/40 border border-amber-500/40 p-5 rounded-3xl space-y-3">
+              <h3 className="font-extrabold text-sm text-amber-300 flex items-center gap-2">
+                <Clock className="w-4 h-4 text-amber-400" />
+                <span>طلبات تسجّيل الشركات المعلّقة فورياً من مستخدمي Firestore</span>
+              </h3>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {usersList.filter(u => u.role === 'pending_company').map(u => (
+                  <div key={u.uid} className="bg-slate-900 border border-amber-500/30 p-4 rounded-2xl flex items-center justify-between gap-3">
+                    <div>
+                      <strong className="text-white text-sm block">{u.name}</strong>
+                      <span className="text-[10px] text-slate-400 block font-mono">{u.email} • {u.phone}</span>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        onClick={() => handleApprovePartnerUser(u.uid, u.name)}
+                        className="px-3 py-1.5 bg-emerald-500 text-slate-950 font-black rounded-xl text-[11px]"
+                      >
+                        قبول (role=company)
+                      </button>
+                      <button
+                        onClick={() => handleRejectPartnerUser(u.uid, u.name)}
+                        className="px-3 py-1.5 bg-red-500/20 text-red-400 border border-red-500/30 font-bold rounded-xl text-[11px]"
+                      >
+                        رفض
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* App Filter Pills */}
           <div className="flex items-center justify-between bg-slate-800/80 p-2 rounded-2xl border border-slate-700">
             <div className="flex items-center gap-2">
-              <span className="text-slate-400 font-bold px-2">تصفية الطلبات:</span>
+              <span className="text-slate-400 font-bold px-2">تصفية الطلبات المسجلة:</span>
               <button
                 onClick={() => setAppFilter('pending')}
                 className={`px-3 py-1.5 rounded-xl font-bold transition-all ${
@@ -323,7 +853,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {filteredApps.length === 0 ? (
               <div className="col-span-2 text-center py-12 bg-slate-800/50 rounded-3xl border border-slate-700 text-slate-400 font-bold">
-                لا توجد طلبات انضمام في هذه الفئة حالياً.
+                لا توجد طلبات انضمام إضافية في هذه الفئة حالياً.
               </div>
             ) : (
               filteredApps.map((app) => (
@@ -399,7 +929,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                       <button
                         onClick={() => {
                           setSelectedApp(app);
-                          setAdminNoteInput('تم مراجعة بيانات الوثائق والاعتماد بنجاح! يسعدنا انضمامكم لشركة وسفر موريتانيا.');
+                          setAdminNoteInput('تم مراجعة بيانات الوثائق والاعتماد بنجاح! يسعدنا انضمامكم لمشاريع وسفر موريتانيا.');
                         }}
                         className="flex-1 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-xl transition-all flex items-center justify-center gap-1.5 shadow-md"
                       >
@@ -452,8 +982,11 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
 
                 <div className="grid grid-cols-2 gap-3 pt-2">
                   <button
-                    onClick={() => {
+                    onClick={async () => {
                       onApproveApplication(selectedApp.id, adminNoteInput);
+                      if (selectedApp.userId) {
+                        await approveCompanyPartnerRequest(selectedApp.userId);
+                      }
                       setSelectedApp(null);
                       alert('تمت الموافقة على الطلب بنجاح وإنشاء حساب الشركة المعتمدة!');
                     }}
@@ -463,8 +996,11 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                   </button>
 
                   <button
-                    onClick={() => {
+                    onClick={async () => {
                       onRejectApplication(selectedApp.id, adminNoteInput);
+                      if (selectedApp.userId) {
+                        await rejectCompanyPartnerRequest(selectedApp.userId);
+                      }
                       setSelectedApp(null);
                       alert('تم تسجيل رفض الطلب وإرسال الملاحظة لمقدم الطلب.');
                     }}
@@ -480,7 +1016,9 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
         </div>
       )}
 
-      {/* TAB 2: Complaints & Reports System */}
+      {/* ========================================== */}
+      {/* TAB 3: Complaints & Reports System */}
+      {/* ========================================== */}
       {activeTab === 'complaints' && (
         <div className="space-y-4 text-xs">
           <div className="flex items-center justify-between bg-slate-800 p-4 rounded-2xl border border-slate-700">
@@ -587,7 +1125,9 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
         </div>
       )}
 
-      {/* TAB 3: Key Metrics & Real-time Transactions */}
+      {/* ========================================== */}
+      {/* TAB 4: Key Metrics & Real-time Transactions */}
+      {/* ========================================== */}
       {activeTab === 'kpi' && (
         <div className="space-y-6">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -641,7 +1181,9 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
         </div>
       )}
 
-      {/* TAB 4: Manage Companies & Commissions */}
+      {/* ========================================== */}
+      {/* TAB 5: Manage Companies & Commissions */}
+      {/* ========================================== */}
       {activeTab === 'companies' && (
         <div className="space-y-4 text-xs">
           <div className="bg-slate-800 border border-slate-700 p-4 rounded-2xl flex items-center justify-between">
@@ -762,7 +1304,9 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
         </div>
       )}
 
-      {/* TAB 5: Global Commission Config */}
+      {/* ========================================== */}
+      {/* TAB 6: Global Commission Config */}
+      {/* ========================================== */}
       {activeTab === 'commission' && (
         <div className="max-w-xl bg-slate-800 border border-slate-700/80 rounded-3xl p-6 text-xs space-y-4">
           <h2 className="text-base font-bold text-white mb-2">إعدادات ونسب عمولة المنصة العامة</h2>
@@ -820,7 +1364,9 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
         </div>
       )}
 
-      {/* TAB 6: QR Code Verification */}
+      {/* ========================================== */}
+      {/* TAB 7: QR Code Verification */}
+      {/* ========================================== */}
       {activeTab === 'qr_verifier' && (
         <div className="max-w-xl bg-slate-800 border border-slate-700/80 rounded-3xl p-6 text-xs space-y-4">
           <div className="flex items-center gap-2 text-emerald-400 font-bold text-sm mb-2">
@@ -869,7 +1415,9 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
         </div>
       )}
 
-      {/* TAB 7: Manage Cities */}
+      {/* ========================================== */}
+      {/* TAB 8: Manage Cities */}
+      {/* ========================================== */}
       {activeTab === 'cities' && (
         <div className="space-y-6 max-w-2xl text-xs">
           <form onSubmit={handleCreateCity} className="bg-slate-800 border border-slate-700/80 rounded-2xl p-4 space-y-3">
@@ -906,7 +1454,9 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
         </div>
       )}
 
-      {/* TAB 8: Broadcast Notifications */}
+      {/* ========================================== */}
+      {/* TAB 9: Broadcast Notifications */}
+      {/* ========================================== */}
       {activeTab === 'notifications' && (
         <form onSubmit={handleSendNotification} className="max-w-md bg-slate-800 border border-slate-700/80 rounded-3xl p-6 text-xs space-y-3">
           <h3 className="font-bold text-white text-sm">إرسال إشعار جماعي لجميع الركاب والشركات</h3>

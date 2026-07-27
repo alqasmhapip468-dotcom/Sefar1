@@ -54,23 +54,40 @@ export default function App() {
 
     const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
       if (fbUser) {
-        const profile = await fetchUserProfileFromFirestore(fbUser.uid);
-        const email = fbUser.email || profile?.email || '';
-        const userRole = (profile?.role || 'passenger') as UserRole;
+        try {
+          const profile = await fetchUserProfileFromFirestore(fbUser.uid);
+          const email = fbUser.email || profile?.email || '';
+          const rawRole = profile?.role || 'customer';
 
-        const userObj: UserProfile = {
-          id: fbUser.uid,
-          name: profile?.name || fbUser.displayName || (userRole === 'super_admin' ? 'المشرف العام (Super Admin)' : 'مسافر موريتاني'),
-          email: email || `${fbUser.phoneNumber?.replace(/\+/g, '')}@safar.mr`,
-          phone: profile?.phone || fbUser.phoneNumber || '+222 4525 1010',
-          role: userRole,
-          favorites: [],
-          createdAt: profile?.createdAt || new Date().toISOString()
-        };
+          let mappedRole: UserRole = 'passenger';
+          if (rawRole === 'admin' || rawRole === 'super_admin') {
+            mappedRole = 'super_admin';
+          } else if (rawRole === 'company' || rawRole === 'company_admin' || rawRole === 'independent_driver') {
+            mappedRole = 'company_admin';
+          } else {
+            mappedRole = 'passenger';
+          }
 
-        setUser(userObj);
-        if (userRole === 'super_admin') {
-          setCurrentRole('super_admin');
+          const userObj: UserProfile = {
+            id: fbUser.uid,
+            name: profile?.name || fbUser.displayName || (mappedRole === 'super_admin' ? 'المشرف العام (Super Admin)' : 'مسافر موريتاني'),
+            email: email || `${fbUser.phoneNumber?.replace(/\+/g, '')}@safar.mr`,
+            phone: profile?.phone || fbUser.phoneNumber || '+222 2779 8492',
+            role: profile?.role || 'customer',
+            status: profile?.status || 'active',
+            companyId: profile?.companyId || null,
+            favorites: [],
+            createdAt: profile?.createdAt || new Date().toISOString()
+          };
+
+          setUser(userObj);
+          setCurrentRole(mappedRole);
+        } catch (err: any) {
+          console.warn("Auth state error:", err);
+          if (err.message && err.message.includes('معطل')) {
+            alert(err.message);
+          }
+          setUser(null);
         }
       } else {
         setUser(null);

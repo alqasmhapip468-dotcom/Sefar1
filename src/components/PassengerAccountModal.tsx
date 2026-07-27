@@ -2,12 +2,14 @@ import React, { useState } from 'react';
 import { X, User, Ticket, Building2, ShieldCheck, Phone, Mail, LogOut, FileText, CheckCircle2, AlertCircle, Send, Car, Lock, KeyRound, Sparkles, Trash2 } from 'lucide-react';
 import { Booking, UserProfile, PartnerApplication, ComplaintReport, UserRole, ApplicationType } from '../types';
 import { formatCurrencyMRU } from '../lib/utils';
+import { doc, setDoc } from 'firebase/firestore';
 import { 
   loginWithGoogle, 
   sendSmsOtp, 
   loginAccountInFirebase, 
   registerAccountInFirebase, 
   deleteAccountInFirebase, 
+  db,
   type ConfirmationResult 
 } from '../lib/firebase';
 
@@ -306,6 +308,16 @@ export const PassengerAccountModal: React.FC<PassengerAccountModalProps> = ({
     };
 
     onSubmitApplication(newApp);
+
+    // Update user's role to pending_company in Firestore if user is logged in
+    if (user?.id) {
+      try {
+        setDoc(doc(db, 'users', user.id), { role: 'pending_company' }, { merge: true });
+      } catch (err) {
+        console.warn("Notice updating role to pending_company:", err);
+      }
+    }
+
     setAppSubmittedMsg('تم إرسال طلب الانضمام بنجاح إلى لوحة الإدارة المشرفة! ستصلك رسالة حال اعتماد طلبك.');
     setTimeout(() => setAppSubmittedMsg(''), 6000);
 
@@ -451,7 +463,7 @@ export const PassengerAccountModal: React.FC<PassengerAccountModalProps> = ({
                         <input
                           type="tel"
                           required
-                          placeholder="+222 4525 1010 أو 45251010"
+                          placeholder="+222 2779 8492 أو 27798492"
                           value={phoneInput}
                           onChange={(e) => setPhoneInput(e.target.value)}
                           className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 text-white font-mono focus:border-emerald-500 focus:outline-none"
@@ -588,7 +600,7 @@ export const PassengerAccountModal: React.FC<PassengerAccountModalProps> = ({
                       <input
                         type="tel"
                         required
-                        placeholder="+222 4525 1010"
+                        placeholder="+222 2779 8492"
                         value={regPhone}
                         onChange={(e) => setRegPhone(e.target.value)}
                         className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono focus:border-emerald-500 focus:outline-none"
@@ -965,7 +977,7 @@ export const PassengerAccountModal: React.FC<PassengerAccountModalProps> = ({
                         <input
                           type="tel"
                           required
-                          placeholder="+222 4525 1010"
+                          placeholder="+222 2779 8492"
                           value={appPhone}
                           onChange={(e) => setAppPhone(e.target.value)}
                           className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-white font-mono"
