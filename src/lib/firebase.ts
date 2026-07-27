@@ -65,7 +65,7 @@ export async function ensureUserDocInFirestore(user: User, customName?: string, 
         throw new Error('حسابك معطل حالياً من قبل الإدارة. يرجى التواصل مع الدعم الفني.');
       }
 
-      // Automatically upgrade primary email to admin
+      // Automatically upgrade primary admin email or single first user to admin
       if (isSuperAdminEmail && (data.role !== 'admin' && data.role !== 'super_admin')) {
         const updated = { ...data, role: 'admin' as UserRole };
         await setDoc(userDocRef, { role: 'admin' }, { merge: true });
@@ -81,7 +81,7 @@ export async function ensureUserDocInFirestore(user: User, customName?: string, 
     console.warn("Notice checking user doc:", err);
   }
 
-  // Determine user role (If user collection is empty, make first registered account admin)
+  // Determine user role (If user collection is empty or email matches, make admin)
   let assignedRole: UserRole = isSuperAdminEmail ? 'admin' : 'customer';
 
   if (!isSuperAdminEmail) {
@@ -166,6 +166,9 @@ export async function loginAccountInFirebase(
 
 export async function fetchUserProfileFromFirestore(uid: string): Promise<UserRecord | null> {
   try {
+    if (auth.currentUser && auth.currentUser.uid === uid) {
+      return await ensureUserDocInFirestore(auth.currentUser);
+    }
     const userDocRef = doc(db, 'users', uid);
     const snap = await getDoc(userDocRef);
 
@@ -175,10 +178,13 @@ export async function fetchUserProfileFromFirestore(uid: string): Promise<UserRe
         await signOut(auth);
         throw new Error('حسابك معطل حالياً من قبل الإدارة. يرجى التواصل مع الدعم الفني.');
       }
+      const userEmail = (data.email || '').toLowerCase();
+      if (userEmail === 'alqasmhapip468@gmail.com' && data.role !== 'admin' && data.role !== 'super_admin') {
+        const updated = { ...data, role: 'admin' as UserRole };
+        await setDoc(userDocRef, { role: 'admin' }, { merge: true });
+        return updated;
+      }
       return data;
-    } else if (auth.currentUser) {
-      // Automatic doc creation for existing auth user without Firestore record
-      return await ensureUserDocInFirestore(auth.currentUser);
     }
   } catch (err: any) {
     if (err.message && err.message.includes('معطل')) {

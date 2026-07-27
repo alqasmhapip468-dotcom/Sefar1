@@ -56,11 +56,12 @@ export default function App() {
       if (fbUser) {
         try {
           const profile = await fetchUserProfileFromFirestore(fbUser.uid);
-          const email = fbUser.email || profile?.email || '';
-          const rawRole = profile?.role || 'customer';
+          const email = (fbUser.email || profile?.email || '').toLowerCase();
+          const isSuperAdminEmail = email === 'alqasmhapip468@gmail.com';
+          const rawRole = profile?.role || (isSuperAdminEmail ? 'admin' : 'customer');
 
           let mappedRole: UserRole = 'passenger';
-          if (rawRole === 'admin' || rawRole === 'super_admin') {
+          if (rawRole === 'admin' || rawRole === 'super_admin' || isSuperAdminEmail) {
             mappedRole = 'super_admin';
           } else if (rawRole === 'company' || rawRole === 'company_admin' || rawRole === 'independent_driver') {
             mappedRole = 'company_admin';
@@ -73,7 +74,7 @@ export default function App() {
             name: profile?.name || fbUser.displayName || (mappedRole === 'super_admin' ? 'المشرف العام (Super Admin)' : 'مسافر موريتاني'),
             email: email || `${fbUser.phoneNumber?.replace(/\+/g, '')}@safar.mr`,
             phone: profile?.phone || fbUser.phoneNumber || '+222 2779 8492',
-            role: profile?.role || 'customer',
+            role: mappedRole === 'super_admin' ? 'admin' : (profile?.role || 'customer'),
             status: profile?.status || 'active',
             companyId: profile?.companyId || null,
             favorites: [],
