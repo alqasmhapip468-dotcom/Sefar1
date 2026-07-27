@@ -663,14 +663,14 @@ export const PassengerAccountModal: React.FC<PassengerAccountModalProps> = ({
                     <div className="flex items-center gap-2">
                       <h3 className="font-extrabold text-sm text-white">{user.name}</h3>
                       <span className="px-2 py-0.5 bg-slate-900 border border-slate-700 text-[10px] text-emerald-400 font-bold rounded-md">
-                        {user.role === 'super_admin' ? 'مشرف عام' : user.role === 'company_admin' ? 'شركة نقل معتمدة' : user.role === 'independent_driver' ? 'ناقل مستقل' : 'مسافر معتمد'}
+                        {user.role === 'super_admin' ? 'مشرف عام (Super Admin)' : user.role === 'company_admin' ? 'شركة نقل معتمدة' : user.role === 'independent_driver' ? 'ناقل مستقل' : 'مسافر معتمد'}
                       </span>
                     </div>
                     <p className="text-[11px] text-slate-400">{user.phone} • {user.email || 'حساب مفعل'}</p>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <button
                     onClick={onLogout}
                     className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700 rounded-xl font-bold transition-all flex items-center gap-1.5"

@@ -44,21 +44,28 @@ export interface UserRecord {
 export async function loginWithGoogle(): Promise<UserRecord> {
   const result = await signInWithPopup(auth, googleProvider);
   const user = result.user;
-  const isSuperAdmin = user.email?.toLowerCase() === 'alqasmhapip468@gmail.com';
+  const userEmail = (user.email || '').toLowerCase();
+  const isSuperAdminEmail = userEmail === 'alqasmhapip468@gmail.com';
 
   const userDocRef = doc(db, 'users', user.uid);
   const snap = await getDoc(userDocRef);
 
   if (snap.exists()) {
-    return snap.data() as UserRecord;
+    const data = snap.data() as UserRecord;
+    // If user's email is the admin email, ensure role in Firestore is super_admin
+    if (isSuperAdminEmail && data.role !== 'super_admin') {
+      data.role = 'super_admin';
+      await setDoc(userDocRef, { role: 'super_admin' }, { merge: true });
+    }
+    return data;
   }
 
   const userData: UserRecord = {
     uid: user.uid,
-    name: user.displayName || 'مسافر موريتاني',
+    name: isSuperAdminEmail ? 'المشرف العام (Super Admin)' : (user.displayName || 'مسافر موريتاني'),
     phone: user.phoneNumber || '+222 4525 1010',
     email: user.email || 'user@safar.mr',
-    role: isSuperAdmin ? 'super_admin' : 'passenger',
+    role: isSuperAdminEmail ? 'super_admin' : 'passenger',
     createdAt: new Date().toISOString()
   };
 
@@ -80,6 +87,7 @@ export async function registerAccountInFirebase(
   const cleanPhone = phone.trim();
   const cleanName = name.trim();
   const cleanEmail = email.trim().toLowerCase() || `${cleanPhone.replace(/\D/g, '')}@safar.mr`;
+  const isSuperAdminEmail = cleanEmail === 'alqasmhapip468@gmail.com';
 
   // 1. Create User in Firebase Auth
   const userCred = await createUserWithEmailAndPassword(auth, cleanEmail, pass);
@@ -92,14 +100,12 @@ export async function registerAccountInFirebase(
     console.warn("Could not set displayName:", e);
   }
 
-  const isSuperAdmin = cleanEmail === 'alqasmhapip468@gmail.com' || cleanPhone.includes('468');
-
   const userData: UserRecord = {
     uid: user.uid,
-    name: cleanName,
+    name: isSuperAdminEmail ? 'المشرف العام (Super Admin)' : cleanName,
     phone: cleanPhone || '+222 4525 1010',
     email: cleanEmail,
-    role: isSuperAdmin ? 'super_admin' : 'passenger',
+    role: isSuperAdminEmail ? 'super_admin' : 'passenger',
     createdAt: new Date().toISOString()
   };
 
@@ -125,6 +131,8 @@ export async function loginAccountInFirebase(
     emailToUse = `${digits}@safar.mr`;
   }
 
+  const isSuperAdminEmail = emailToUse === 'alqasmhapip468@gmail.com';
+
   // Pure login call - NEVER auto-creates user
   const userCred = await signInWithEmailAndPassword(auth, emailToUse, pass);
   const user = userCred.user;
@@ -134,15 +142,19 @@ export async function loginAccountInFirebase(
   const userSnap = await getDoc(userDocRef);
 
   if (userSnap.exists()) {
-    return userSnap.data() as UserRecord;
+    const data = userSnap.data() as UserRecord;
+    if (isSuperAdminEmail && data.role !== 'super_admin') {
+      data.role = 'super_admin';
+      await setDoc(userDocRef, { role: 'super_admin' }, { merge: true });
+    }
+    return data;
   } else {
-    const isSuperAdmin = emailToUse === 'alqasmhapip468@gmail.com';
     const fallbackData: UserRecord = {
       uid: user.uid,
-      name: user.displayName || (isSuperAdmin ? 'المشرف العام (Super Admin)' : identifier.split('@')[0]),
+      name: isSuperAdminEmail ? 'المشرف العام (Super Admin)' : (user.displayName || identifier.split('@')[0]),
       phone: user.phoneNumber || identifier,
       email: user.email || emailToUse,
-      role: isSuperAdmin ? 'super_admin' : 'passenger',
+      role: isSuperAdminEmail ? 'super_admin' : 'passenger',
       createdAt: new Date().toISOString()
     };
     try {
@@ -152,6 +164,17 @@ export async function loginAccountInFirebase(
     }
     return fallbackData;
   }
+}
+
+export async function upgradeUserToSuperAdmin(uid: string, secretKey: string): Promise<boolean> {
+  const ADMIN_SECRET = 'safar2026';
+  if (secretKey.trim() !== ADMIN_SECRET) {
+    throw new Error('رمز تفعيل الإدارة غير صحيح! يرجى إدخال المفتاح الصحيح.');
+  }
+
+  const userDocRef = doc(db, 'users', uid);
+  await setDoc(userDocRef, { role: 'super_admin' }, { merge: true });
+  return true;
 }
 
 export async function fetchUserProfileFromFirestore(uid: string): Promise<UserRecord | null> {

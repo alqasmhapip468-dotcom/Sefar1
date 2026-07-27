@@ -56,20 +56,20 @@ export default function App() {
       if (fbUser) {
         const profile = await fetchUserProfileFromFirestore(fbUser.uid);
         const email = fbUser.email || profile?.email || '';
-        const isSuperAdmin = email.toLowerCase() === 'alqasmhapip468@gmail.com' || profile?.role === 'super_admin';
+        const userRole = (profile?.role || 'passenger') as UserRole;
 
         const userObj: UserProfile = {
           id: fbUser.uid,
-          name: profile?.name || fbUser.displayName || (isSuperAdmin ? 'المشرف العام (Super Admin)' : 'مسافر موريتاني'),
+          name: profile?.name || fbUser.displayName || (userRole === 'super_admin' ? 'المشرف العام (Super Admin)' : 'مسافر موريتاني'),
           email: email || `${fbUser.phoneNumber?.replace(/\+/g, '')}@safar.mr`,
           phone: profile?.phone || fbUser.phoneNumber || '+222 4525 1010',
-          role: (profile?.role || (isSuperAdmin ? 'super_admin' : 'passenger')) as UserRole,
+          role: userRole,
           favorites: [],
           createdAt: profile?.createdAt || new Date().toISOString()
         };
 
         setUser(userObj);
-        if (isSuperAdmin) {
+        if (userRole === 'super_admin') {
           setCurrentRole('super_admin');
         }
       } else {
