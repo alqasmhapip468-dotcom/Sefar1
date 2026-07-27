@@ -26,11 +26,14 @@ import { CompanyDashboard } from './components/CompanyDashboard';
 import { SuperAdminDashboard } from './components/SuperAdminDashboard';
 import { AiAssistantDrawer } from './components/AiAssistantDrawer';
 import { FaqPrivacyModal } from './components/FaqPrivacyModal';
-import { testFirebaseConnection, auth, onAuthStateChanged, logoutFirebase } from './lib/firebase';
+import { collection, onSnapshot, doc, setDoc } from 'firebase/firestore';
+import { testFirebaseConnection, auth, onAuthStateChanged, logoutFirebase, db } from './lib/firebase';
+import { LanguageProvider } from './lib/i18n';
 
 export default function App() {
-  // Theme State
+  // Theme & Language State
   const [darkMode, setDarkMode] = useState<boolean>(true);
+  const [language, setLanguage] = useState<'ar' | 'fr'>('ar');
 
   useEffect(() => {
     if (darkMode) {
@@ -39,6 +42,11 @@ export default function App() {
       document.documentElement.classList.remove('dark');
     }
   }, [darkMode]);
+
+  useEffect(() => {
+    document.documentElement.dir = language === 'ar' ? 'rtl' : 'ltr';
+    document.documentElement.lang = language;
+  }, [language]);
 
   // Firebase Auth State Listener
   useEffect(() => {
@@ -64,6 +72,54 @@ export default function App() {
     });
 
     return () => unsubscribe();
+  }, []);
+
+  // Firestore Real-Time Listeners for Trips and Bookings
+  useEffect(() => {
+    // 1. Real-time Trips Snapshot Listener
+    const tripsRef = collection(db, 'trips');
+    const unsubscribeTrips = onSnapshot(
+      tripsRef,
+      (snapshot) => {
+        if (!snapshot.empty) {
+          const remoteTrips: Trip[] = [];
+          snapshot.forEach((doc) => {
+            remoteTrips.push({ id: doc.id, ...doc.data() } as Trip);
+          });
+          if (remoteTrips.length > 0) {
+            setTrips(remoteTrips);
+          }
+        }
+      },
+      (err) => {
+        console.warn('Firestore trips onSnapshot notice (using local/sync state):', err);
+      }
+    );
+
+    // 2. Real-time Bookings Snapshot Listener
+    const bookingsRef = collection(db, 'bookings');
+    const unsubscribeBookings = onSnapshot(
+      bookingsRef,
+      (snapshot) => {
+        if (!snapshot.empty) {
+          const remoteBookings: Booking[] = [];
+          snapshot.forEach((doc) => {
+            remoteBookings.push({ id: doc.id, ...doc.data() } as Booking);
+          });
+          if (remoteBookings.length > 0) {
+            setBookings(remoteBookings);
+          }
+        }
+      },
+      (err) => {
+        console.warn('Firestore bookings onSnapshot notice (using local/sync state):', err);
+      }
+    );
+
+    return () => {
+      unsubscribeTrips();
+      unsubscribeBookings();
+    };
   }, []);
 
   // Role Context Switcher
@@ -132,21 +188,70 @@ export default function App() {
     setCheckoutSeats(selectedSeats);
   };
 
-  const handleConfirmBooking = (newBooking: Booking) => {
-    setBookings([newBooking, ...bookings]);
+  const handleConfirmBooking = async (newBooking: Booking) => {
+    // Immediate local state update
+    setBookings(prev => [newBooking, ...prev]);
+
+    // Update local seats state immediately
+    let updatedTrip: Trip | undefined;
+    setTrips(prevTrips => prevTrips.map(t => {
+      if (t.id === newBooking.tripId) {
+        const updatedBooked = Array.from(new Set([...t.bookedSeats, ...newBooking.seats]));
+        const updatedAvail = Math.max(0, t.totalSeats - updatedBooked.length);
+        updatedTrip = {
+          ...t,
+          bookedSeats: updatedBooked,
+          availableSeatsCount: updatedAvail
+        };
+        return updatedTrip;
+      }
+      return t;
+    }));
+
+    // Real-time Firestore sync
+    try {
+      await setDoc(doc(db, 'bookings', newBooking.id), newBooking);
+      const targetTrip = updatedTrip || trips.find(t => t.id === newBooking.tripId);
+      if (targetTrip) {
+        const updatedBooked = Array.from(new Set([...targetTrip.bookedSeats, ...newBooking.seats]));
+        const updatedAvail = Math.max(0, targetTrip.totalSeats - updatedBooked.length);
+        await setDoc(doc(db, 'trips', targetTrip.id), {
+          ...targetTrip,
+          bookedSeats: updatedBooked,
+          availableSeatsCount: updatedAvail
+        }, { merge: true });
+      }
+    } catch (err) {
+      console.warn("Firestore real-time booking sync notice:", err);
+    }
+
     setCheckoutTrip(null);
     setCheckoutSeats([]);
     setActiveTicket(newBooking);
   };
 
-  const handleCancelBooking = (bookingId: string) => {
+  const handleCancelBooking = async (bookingId: string) => {
     if (confirm('هل أنت تأكد من رغبتك في إلغاء هذا الحجز؟')) {
-      setBookings(bookings.map(b => b.id === bookingId ? { ...b, bookingStatus: 'cancelled' } : b));
+      const updated = bookings.map(b => b.id === bookingId ? { ...b, bookingStatus: 'cancelled' as const } : b);
+      setBookings(updated);
+      const target = updated.find(b => b.id === bookingId);
+      if (target) {
+        try {
+          await setDoc(doc(db, 'bookings', bookingId), target, { merge: true });
+        } catch (err) {
+          console.warn("Firestore cancel booking sync notice:", err);
+        }
+      }
     }
   };
 
-  const handleAddNewTrip = (newTrip: Trip) => {
-    setTrips([newTrip, ...trips]);
+  const handleAddNewTrip = async (newTrip: Trip) => {
+    setTrips(prev => [newTrip, ...prev]);
+    try {
+      await setDoc(doc(db, 'trips', newTrip.id), newTrip);
+    } catch (err) {
+      console.warn("Firestore new trip sync notice:", err);
+    }
   };
 
   const handleDeleteTrip = (tripId: string) => {
@@ -253,177 +358,185 @@ export default function App() {
   const destCityObj = cities.find(c => c.id === destinationCityId);
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-between font-sans dir-rtl" dir="rtl">
-      
-      {/* Header */}
-      <Header
-        currentRole={currentRole}
-        onRoleChange={setCurrentRole}
-        darkMode={darkMode}
-        onToggleDarkMode={() => setDarkMode(!darkMode)}
-        onOpenMyBookings={() => setIsAccountModalOpen(true)}
-        onOpenAuth={() => setIsAccountModalOpen(true)}
-        onOpenAiAssistant={() => setIsAiAssistantOpen(true)}
-        onOpenFaq={() => setIsFaqOpen(true)}
-        activeBookingsCount={bookings.filter(b => b.bookingStatus === 'confirmed').length}
-      />
-
-      {/* Main Body per Role */}
-      <main className="flex-1">
+    <LanguageProvider language={language} setLanguage={setLanguage}>
+      <div
+        className="min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 flex flex-col justify-between font-sans transition-colors duration-200"
+        dir={language === 'ar' ? 'rtl' : 'ltr'}
+      >
         
-        {/* ROLE 1: Passenger View */}
-        {currentRole === 'passenger' && (
-          <div>
-            
-            {/* Hero Search Box */}
-            <HeroSearch
-              cities={cities}
-              originId={originCityId}
-              destinationId={destinationCityId}
-              departureDate={departureDate}
-              passengers={passengersCount}
-              selectedVehicleType={selectedVehicleType}
-              onOriginChange={setOriginCityId}
-              onDestinationChange={setDestinationCityId}
-              onDepartureDateChange={setDepartureDate}
-              onPassengersChange={setPassengersCount}
-              onVehicleTypeChange={setSelectedVehicleType}
-              onSearch={handleSearch}
-              onQuickRouteSelect={handleQuickRouteSelect}
-            />
+        {/* Header */}
+        <Header
+          currentRole={currentRole}
+          onRoleChange={setCurrentRole}
+          darkMode={darkMode}
+          onToggleDarkMode={() => setDarkMode(!darkMode)}
+          language={language}
+          onToggleLanguage={() => setLanguage(language === 'ar' ? 'fr' : 'ar')}
+          onOpenMyBookings={() => setIsAccountModalOpen(true)}
+          onOpenAuth={() => setIsAccountModalOpen(true)}
+          onOpenAiAssistant={() => setIsAiAssistantOpen(true)}
+          onOpenFaq={() => setIsFaqOpen(true)}
+          activeBookingsCount={bookings.filter(b => b.bookingStatus === 'confirmed').length}
+        />
 
-            {/* Popular Routes Section */}
-            <PopularRoutes onSelectRoute={handleQuickRouteSelect} trips={trips} />
-
-            {/* Platform Features Section */}
-            <FeaturesSection />
-
-            {/* Search Results Section */}
-            <div id="search-results-section" className="bg-slate-900/60 py-8">
-              <SearchResults
-                trips={filteredTrips}
-                companies={companies}
-                originNameAr={originCityObj?.nameAr || 'نواكشوط'}
-                destinationNameAr={destCityObj?.nameAr || 'نواذيبو'}
+        {/* Main Body per Role */}
+        <main className="flex-1">
+          
+          {/* ROLE 1: Passenger View */}
+          {currentRole === 'passenger' && (
+            <div>
+              
+              {/* Hero Search Box */}
+              <HeroSearch
+                cities={cities}
+                originId={originCityId}
+                destinationId={destinationCityId}
                 departureDate={departureDate}
-                passengersCount={passengersCount}
-                onSelectTrip={handleSelectTrip}
-                onModifySearch={() => {
-                  window.scrollTo({ top: 0, behavior: 'smooth' });
-                }}
+                passengers={passengersCount}
+                selectedVehicleType={selectedVehicleType}
+                onOriginChange={setOriginCityId}
+                onDestinationChange={setDestinationCityId}
+                onDepartureDateChange={setDepartureDate}
+                onPassengersChange={setPassengersCount}
+                onVehicleTypeChange={setSelectedVehicleType}
+                onSearch={handleSearch}
+                onQuickRouteSelect={handleQuickRouteSelect}
               />
+
+              {/* Popular Routes Section */}
+              <PopularRoutes onSelectRoute={handleQuickRouteSelect} trips={trips} />
+
+              {/* Platform Features Section */}
+              <FeaturesSection />
+
+              {/* Search Results Section */}
+              <div id="search-results-section" className="bg-slate-100 dark:bg-slate-900/60 py-8 transition-colors duration-200">
+                <SearchResults
+                  trips={filteredTrips}
+                  companies={companies}
+                  originNameAr={originCityObj?.nameAr || 'نواكشوط'}
+                  destinationNameAr={destCityObj?.nameAr || 'نواذيبو'}
+                  departureDate={departureDate}
+                  passengersCount={passengersCount}
+                  onSelectTrip={handleSelectTrip}
+                  onModifySearch={() => {
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                />
+              </div>
+
             </div>
+          )}
 
-          </div>
-        )}
+          {/* ROLE 2: Company Dashboard View */}
+          {currentRole === 'company_admin' && (
+            <CompanyDashboard
+              companies={companies}
+              selectedCompanyId={selectedCompanyId}
+              onSelectCompany={setSelectedCompanyId}
+              trips={trips}
+              vehicles={vehicles}
+              drivers={drivers}
+              bookings={bookings}
+              cities={cities}
+              onAddNewTrip={handleAddNewTrip}
+              onDeleteTrip={handleDeleteTrip}
+            />
+          )}
 
-        {/* ROLE 2: Company Dashboard View */}
-        {currentRole === 'company_admin' && (
-          <CompanyDashboard
-            companies={companies}
-            selectedCompanyId={selectedCompanyId}
-            onSelectCompany={setSelectedCompanyId}
-            trips={trips}
-            vehicles={vehicles}
-            drivers={drivers}
-            bookings={bookings}
-            cities={cities}
-            onAddNewTrip={handleAddNewTrip}
-            onDeleteTrip={handleDeleteTrip}
+          {/* ROLE 3: Super Admin Panel View */}
+          {currentRole === 'super_admin' && (
+            <SuperAdminDashboard
+              companies={companies}
+              cities={cities}
+              bookings={bookings}
+              adminSettings={adminSettings}
+              applications={partnerApplications}
+              complaints={complaints}
+              onUpdateAdminSettings={setAdminSettings}
+              onToggleVerifyCompany={handleToggleVerifyCompany}
+              onAddCity={handleAddCity}
+              onApproveApplication={handleApproveApplication}
+              onRejectApplication={handleRejectApplication}
+              onResolveComplaint={handleResolveComplaint}
+              onUpdateCompanyCommission={handleUpdateCompanyCommission}
+            />
+          )}
+
+        </main>
+
+        {/* Footer */}
+        <Footer onOpenFaq={() => setIsFaqOpen(true)} />
+
+        {/* MODALS & DRAWERS */}
+
+        {/* 1. Trip Details & Seat Picker Modal */}
+        {selectedTripForDetails && (
+          <TripDetailsModal
+            trip={selectedTripForDetails}
+            passengersCount={passengersCount}
+            onClose={() => setSelectedTripForDetails(null)}
+            onProceedToCheckout={handleProceedToCheckout}
           />
         )}
 
-        {/* ROLE 3: Super Admin Panel View */}
-        {currentRole === 'super_admin' && (
-          <SuperAdminDashboard
-            companies={companies}
-            cities={cities}
+        {/* 2. Checkout Modal */}
+        {checkoutTrip && (
+          <CheckoutModal
+            trip={checkoutTrip}
+            selectedSeats={checkoutSeats}
+            coupons={coupons}
+            onClose={() => setCheckoutTrip(null)}
+            onConfirmBooking={handleConfirmBooking}
+          />
+        )}
+
+        {/* 3. E-Ticket View Modal */}
+        {activeTicket && (
+          <TicketModal
+            booking={activeTicket}
+            onClose={() => setActiveTicket(null)}
+          />
+        )}
+
+        {/* 4. Passenger Account Modal */}
+        {isAccountModalOpen && (
+          <PassengerAccountModal
+            user={user}
             bookings={bookings}
-            adminSettings={adminSettings}
             applications={partnerApplications}
             complaints={complaints}
-            onUpdateAdminSettings={setAdminSettings}
-            onToggleVerifyCompany={handleToggleVerifyCompany}
-            onAddCity={handleAddCity}
-            onApproveApplication={handleApproveApplication}
-            onRejectApplication={handleRejectApplication}
-            onResolveComplaint={handleResolveComplaint}
-            onUpdateCompanyCommission={handleUpdateCompanyCommission}
+            onClose={() => setIsAccountModalOpen(false)}
+            onViewBookingTicket={(b) => {
+              setIsAccountModalOpen(false);
+              setActiveTicket(b);
+            }}
+            onCancelBooking={handleCancelBooking}
+            onLoginSimulate={handleLoginSimulate}
+            onLogout={async () => {
+              await logoutFirebase();
+              setUser(null);
+            }}
+            onSubmitApplication={handleSubmitPartnerApplication}
+            onSubmitComplaint={handleSubmitComplaint}
           />
         )}
 
-      </main>
-
-      {/* Footer */}
-      <Footer onOpenFaq={() => setIsFaqOpen(true)} />
-
-      {/* MODALS & DRAWERS */}
-
-      {/* 1. Trip Details & Seat Picker Modal */}
-      {selectedTripForDetails && (
-        <TripDetailsModal
-          trip={selectedTripForDetails}
-          passengersCount={passengersCount}
-          onClose={() => setSelectedTripForDetails(null)}
-          onProceedToCheckout={handleProceedToCheckout}
+        {/* 5. AI Assistant Drawer */}
+        <AiAssistantDrawer
+          isOpen={isAiAssistantOpen}
+          onClose={() => setIsAiAssistantOpen(false)}
+          originCityName={originCityObj?.nameAr}
+          destCityName={destCityObj?.nameAr}
         />
-      )}
 
-      {/* 2. Checkout Modal */}
-      {checkoutTrip && (
-        <CheckoutModal
-          trip={checkoutTrip}
-          selectedSeats={checkoutSeats}
-          coupons={coupons}
-          onClose={() => setCheckoutTrip(null)}
-          onConfirmBooking={handleConfirmBooking}
-        />
-      )}
+        {/* 6. FAQ & Privacy Policy Modal */}
+        {isFaqOpen && (
+          <FaqPrivacyModal onClose={() => setIsFaqOpen(false)} />
+        )}
 
-      {/* 3. E-Ticket View Modal */}
-      {activeTicket && (
-        <TicketModal
-          booking={activeTicket}
-          onClose={() => setActiveTicket(null)}
-        />
-      )}
-
-      {/* 4. Passenger Account Modal */}
-      {isAccountModalOpen && (
-        <PassengerAccountModal
-          user={user}
-          bookings={bookings}
-          applications={partnerApplications}
-          complaints={complaints}
-          onClose={() => setIsAccountModalOpen(false)}
-          onViewBookingTicket={(b) => {
-            setIsAccountModalOpen(false);
-            setActiveTicket(b);
-          }}
-          onCancelBooking={handleCancelBooking}
-          onLoginSimulate={handleLoginSimulate}
-          onLogout={async () => {
-            await logoutFirebase();
-            setUser(null);
-          }}
-          onSubmitApplication={handleSubmitPartnerApplication}
-          onSubmitComplaint={handleSubmitComplaint}
-        />
-      )}
-
-      {/* 5. AI Assistant Drawer */}
-      <AiAssistantDrawer
-        isOpen={isAiAssistantOpen}
-        onClose={() => setIsAiAssistantOpen(false)}
-        originCityName={originCityObj?.nameAr}
-        destCityName={destCityObj?.nameAr}
-      />
-
-      {/* 6. FAQ & Privacy Policy Modal */}
-      {isFaqOpen && (
-        <FaqPrivacyModal onClose={() => setIsFaqOpen(false)} />
-      )}
-
-    </div>
+      </div>
+    </LanguageProvider>
   );
+
 }

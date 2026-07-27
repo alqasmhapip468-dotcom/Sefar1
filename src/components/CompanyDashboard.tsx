@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Company, Trip, Vehicle, Driver, Booking, City, VehicleType } from '../types';
 import { formatCurrencyMRU, formatVehicleTypeArabic } from '../lib/utils';
-import { Building2, Plus, Bus, Users, DollarSign, TrendingUp, Calendar, FileText, CheckCircle2, Trash2, Edit3 } from 'lucide-react';
+import { Building2, Plus, Bus, Users, DollarSign, TrendingUp, Calendar, FileText, CheckCircle2, Trash2, Edit3, Printer, QrCode, Search, AlertCircle, X } from 'lucide-react';
 
 interface CompanyDashboardProps {
   companies: Company[];
@@ -45,8 +45,7 @@ export const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
   const companyTrips = trips.filter(t => t.companyId === currentCompany.id);
   const companyBookings = bookings.filter(b => companyTrips.some(t => t.id === b.tripId));
 
-  // Revenue Calculations according to prompt business logic:
-  // Ticket Price (e.g. 500 MRU) - Platform Commission (e.g. 30 MRU) = Company Net (470 MRU)
+  // Revenue Calculations
   const totalGrossRevenue = companyBookings.reduce((sum, b) => sum + b.totalPriceMRU, 0);
   const totalCommissionPaid = companyBookings.reduce((sum, b) => sum + b.commissionMRU, 0);
   const netEarnings = totalGrossRevenue - totalCommissionPaid;
@@ -54,6 +53,16 @@ export const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
 
   // Tab State
   const [activeTab, setActiveTab] = useState<'overview' | 'trips' | 'add_trip' | 'bookings' | 'fleet'>('overview');
+
+  // QR Scanner Modal State
+  const [showQrModal, setShowQrModal] = useState(false);
+  const [searchTicketCode, setSearchTicketCode] = useState('');
+  const [verifiedBooking, setVerifiedBooking] = useState<Booking | null>(null);
+  const [qrError, setQrError] = useState('');
+
+  // Editing trip price state
+  const [editingTripId, setEditingTripId] = useState<string | null>(null);
+  const [editedPrice, setEditedPrice] = useState<number>(500);
 
   // Add Trip Form State
   const [originCityId, setOriginCityId] = useState('nkc');
@@ -64,6 +73,82 @@ export const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
   const [vehicleType, setVehicleType] = useState<VehicleType>('bus');
   const [driverName, setDriverName] = useState('محمد ولد سيدي');
   const [totalSeats, setTotalSeats] = useState(30);
+
+  // Handle Verify QR / Ticket Code
+  const handleVerifyTicket = (e: React.FormEvent) => {
+    e.preventDefault();
+    setQrError('');
+    setVerifiedBooking(null);
+
+    const cleanCode = searchTicketCode.trim().toUpperCase().replace('#', '');
+    const found = companyBookings.find(b => b.bookingCode.toUpperCase() === cleanCode || b.id === cleanCode);
+
+    if (found) {
+      setVerifiedBooking(found);
+    } else {
+      setQrError('لم يتم العثور على حجز مطابق لهذا الرمز في سجل رحلات هذه الشركة.');
+    }
+  };
+
+  // Print Passenger Manifest
+  const handlePrintManifest = () => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+
+    const manifestHtml = `
+      <!DOCTYPE html>
+      <html dir="rtl" lang="ar">
+      <head>
+        <title>كشف المسافرين - ${currentCompany.nameAr}</title>
+        <style>
+          body { font-family: system-ui, sans-serif; padding: 20px; direction: rtl; text-align: right; }
+          h1 { color: #0f172a; border-bottom: 2px solid #0284c7; padding-bottom: 8px; }
+          table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+          th, td { border: 1px solid #cbd5e1; padding: 10px; text-align: right; font-size: 13px; }
+          th { background-color: #f1f5f9; font-weight: bold; }
+          .header-info { margin-bottom: 20px; font-size: 14px; }
+        </style>
+      </head>
+      <body>
+        <h1>كشف المسافرين الرسمي (Passenger Manifest)</h1>
+        <div class="header-info">
+          <p><strong>الشركة:</strong> ${currentCompany.nameAr}</p>
+          <p><strong>تاريخ الكشف:</strong> ${new Date().toLocaleDateString('ar-MA')} | <strong>إجمالي المسافرين:</strong> ${totalPassengers} راكب</p>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>رمز الحجز</th>
+              <th>اسم المسافر</th>
+              <th>رقم الهاتف</th>
+              <th>المقاعد</th>
+              <th>المبلغ المدفوع</th>
+              <th>حالة الحضور</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${companyBookings.map((b, idx) => `
+              <tr>
+                <td>${idx + 1}</td>
+                <td><strong>${b.bookingCode}</strong></td>
+                <td>${b.passengerName}</td>
+                <td>${b.passengerPhone}</td>
+                <td>${b.seats.join(', ')}</td>
+                <td>${b.totalPriceMRU} MRU</td>
+                <td>[  ] حاضر</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </body>
+      </html>
+    `;
+
+    printWindow.document.write(manifestHtml);
+    printWindow.document.close();
+    printWindow.print();
+  };
 
   const handleCreateTrip = (e: React.FormEvent) => {
     e.preventDefault();
@@ -190,6 +275,22 @@ export const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
           }`}
         >
           سجل حجوزات المسافرين ({companyBookings.length})
+        </button>
+
+        <button
+          onClick={() => setShowQrModal(true)}
+          className="px-4 py-2.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-xl transition-all flex items-center gap-1.5 mr-auto"
+        >
+          <QrCode className="w-4 h-4" />
+          <span>مسح / تأكيد التذكرة (QR)</span>
+        </button>
+
+        <button
+          onClick={handlePrintManifest}
+          className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl transition-all flex items-center gap-1.5"
+        >
+          <Printer className="w-4 h-4 text-emerald-400" />
+          <span>طباعة كشف الركاب</span>
         </button>
       </div>
 
@@ -430,6 +531,77 @@ export const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
               </div>
             ))
           )}
+        </div>
+      )}
+
+      {/* QR Code Verification Modal */}
+      {showQrModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="relative w-full max-w-md bg-slate-900 border border-slate-700 rounded-3xl p-6 text-white space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <QrCode className="w-5 h-5 text-amber-400" />
+                <h3 className="font-extrabold text-base">التحقق من تذكرة المسافر (QR)</h3>
+              </div>
+              <button onClick={() => { setShowQrModal(false); setVerifiedBooking(null); setQrError(''); }} className="p-1 text-slate-400 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleVerifyTicket} className="space-y-3">
+              <label className="block text-xs font-bold text-slate-300">أدخل رمز التذكرة أو امسح الرمز:</label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  required
+                  placeholder="مثال: BSK-921405"
+                  value={searchTicketCode}
+                  onChange={(e) => setSearchTicketCode(e.target.value)}
+                  className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 text-white font-mono text-sm uppercase focus:border-amber-400 focus:outline-none"
+                />
+                <button
+                  type="submit"
+                  className="px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs rounded-xl flex items-center gap-1"
+                >
+                  <Search className="w-4 h-4" />
+                  <span>فحص</span>
+                </button>
+              </div>
+            </form>
+
+            {qrError && (
+              <div className="p-3 bg-red-500/10 border border-red-500/30 text-red-400 rounded-xl text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{qrError}</span>
+              </div>
+            )}
+
+            {verifiedBooking && (
+              <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl space-y-2 text-xs">
+                <div className="flex items-center justify-between text-emerald-400 font-extrabold">
+                  <span>تذكرة صالحة ومؤكدة ✓</span>
+                  <span className="font-mono">#{verifiedBooking.bookingCode}</span>
+                </div>
+                <div className="text-slate-300 space-y-1 pt-1">
+                  <p><strong>اسم المسافر:</strong> {verifiedBooking.passengerName}</p>
+                  <p><strong>الهاتف:</strong> {verifiedBooking.passengerPhone}</p>
+                  <p><strong>المقاعد:</strong> {verifiedBooking.seats.join(', ')}</p>
+                  <p><strong>الخط:</strong> {verifiedBooking.tripDetails.originAr} ← {verifiedBooking.tripDetails.destinationAr}</p>
+                  <p><strong>التاريخ والوقت:</strong> {verifiedBooking.tripDetails.departureDate} ({verifiedBooking.tripDetails.departureTime})</p>
+                </div>
+                <button
+                  onClick={() => {
+                    alert(`تم تأكيد صعود المسافر ${verifiedBooking.passengerName} بنجاح!`);
+                    setShowQrModal(false);
+                    setVerifiedBooking(null);
+                  }}
+                  className="w-full py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-xl mt-2"
+                >
+                  تأكيد صعود الحافلة الآن
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
