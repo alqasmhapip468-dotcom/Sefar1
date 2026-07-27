@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { Bus, Moon, Sun, User, Ticket, Building2, ShieldCheck, Sparkles, HelpCircle, Globe, Languages } from 'lucide-react';
-import { UserRole } from '../types';
+import { UserRole, UserProfile } from '../types';
 
 interface HeaderProps {
+  user: UserProfile | null;
   currentRole: UserRole;
   onRoleChange: (role: UserRole) => void;
   darkMode: boolean;
@@ -17,6 +18,7 @@ interface HeaderProps {
 }
 
 export const Header: React.FC<HeaderProps> = ({
+  user,
   currentRole,
   onRoleChange,
   darkMode,
@@ -30,6 +32,10 @@ export const Header: React.FC<HeaderProps> = ({
   activeBookingsCount
 }) => {
   const isAr = language === 'ar';
+
+  const userEmail = (user?.email || '').toLowerCase();
+  const isSuperAdmin = user?.role === 'admin' || user?.role === 'super_admin' || userEmail === 'alqasmhapip468@gmail.com' || currentRole === 'super_admin';
+  const isCompanyUser = user?.role === 'company' || user?.role === 'company_admin' || user?.role === 'independent_driver' || currentRole === 'company_admin';
 
   return (
     <header className="sticky top-0 z-40 bg-white/95 dark:bg-slate-950/95 text-slate-900 dark:text-white border-b border-slate-200 dark:border-slate-800 shadow-md backdrop-blur-md transition-colors duration-200">
@@ -58,27 +64,35 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Contextual Navigation Bar */}
           <div className="hidden md:flex items-center gap-2">
-            {currentRole === 'super_admin' && (
+            {isSuperAdmin && (
               <button
                 onClick={() => onRoleChange('super_admin')}
-                className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-xl text-xs font-bold shadow-lg shadow-purple-600/20 border border-purple-400/30"
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-md border ${
+                  currentRole === 'super_admin'
+                    ? 'bg-purple-600 text-white border-purple-400 shadow-purple-600/30 ring-2 ring-purple-400/50'
+                    : 'bg-purple-900/30 hover:bg-purple-900/60 text-purple-200 border-purple-500/40'
+                }`}
               >
-                <ShieldCheck className="w-4 h-4" />
+                <ShieldCheck className="w-4 h-4 text-purple-300" />
                 <span>{isAr ? 'لوحة التحكم الرئيسية للمشرف العام' : 'Panneau Super Admin'}</span>
               </button>
             )}
 
-            {(currentRole === 'company_admin' || currentRole === 'independent_driver') && (
+            {isCompanyUser && (
               <button
-                onClick={() => onRoleChange(currentRole)}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold shadow-lg shadow-blue-600/20 border border-blue-400/30"
+                onClick={() => onRoleChange('company_admin')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-md border ${
+                  currentRole === 'company_admin'
+                    ? 'bg-blue-600 text-white border-blue-400 shadow-blue-600/30 ring-2 ring-blue-400/50'
+                    : 'bg-blue-900/30 hover:bg-blue-900/60 text-blue-200 border-blue-500/40'
+                }`}
               >
-                <Building2 className="w-4 h-4" />
+                <Building2 className="w-4 h-4 text-blue-300" />
                 <span>{isAr ? 'لوحة تحكم الشركة / الناقل' : 'Espace Transporteur'}</span>
               </button>
             )}
 
-            {currentRole === 'passenger' && (
+            {!isSuperAdmin && !isCompanyUser && (
               <button
                 onClick={onOpenAuth}
                 className="flex items-center gap-2 px-3.5 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800/80 dark:hover:bg-slate-800 text-emerald-700 dark:text-emerald-400 rounded-xl text-xs font-bold border border-emerald-500/30 transition-all hover:scale-105"

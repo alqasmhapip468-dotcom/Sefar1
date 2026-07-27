@@ -37,6 +37,14 @@ import {
   submitCompanyRequestInFirestore,
   approveCompanyPartnerRequest,
   rejectCompanyPartnerRequest,
+  subscribeToCompanies,
+  saveCompanyToFirestore,
+  subscribeToCities,
+  saveCityToFirestore,
+  subscribeToComplaints,
+  saveComplaintToFirestore,
+  subscribeToAdminSettings,
+  saveAdminSettingsToFirestore,
   db 
 } from './lib/firebase';
 import { LanguageProvider } from './lib/i18n';
@@ -163,10 +171,50 @@ export default function App() {
       }
     );
 
+    // 4. Real-time Companies Listener
+    const unsubscribeCompanies = subscribeToCompanies(
+      (remoteCompanies) => {
+        if (remoteCompanies && remoteCompanies.length > 0) {
+          setCompanies(remoteCompanies);
+        }
+      }
+    );
+
+    // 5. Real-time Cities Listener
+    const unsubscribeCities = subscribeToCities(
+      (remoteCities) => {
+        if (remoteCities && remoteCities.length > 0) {
+          setCities(remoteCities);
+        }
+      }
+    );
+
+    // 6. Real-time Complaints Listener
+    const unsubscribeComplaints = subscribeToComplaints(
+      (remoteComplaints) => {
+        if (remoteComplaints) {
+          setComplaints(remoteComplaints);
+        }
+      }
+    );
+
+    // 7. Real-time Admin Settings Listener
+    const unsubscribeSettings = subscribeToAdminSettings(
+      (remoteSettings) => {
+        if (remoteSettings) {
+          setAdminSettings(remoteSettings);
+        }
+      }
+    );
+
     return () => {
       unsubscribeTrips();
       unsubscribeBookings();
       unsubscribeCompanyRequests();
+      unsubscribeCompanies();
+      unsubscribeCities();
+      unsubscribeComplaints();
+      unsubscribeSettings();
     };
   }, []);
 
@@ -308,12 +356,26 @@ export default function App() {
     }
   };
 
-  const handleToggleVerifyCompany = (companyId: string) => {
-    setCompanies(companies.map(c => c.id === companyId ? { ...c, verified: !c.verified } : c));
+  const handleToggleVerifyCompany = async (companyId: string) => {
+    const updated = companies.map(c => c.id === companyId ? { ...c, verified: !c.verified } : c);
+    setCompanies(updated);
+    const target = updated.find(c => c.id === companyId);
+    if (target) {
+      try {
+        await saveCompanyToFirestore(target);
+      } catch (err) {
+        console.warn("Notice updating company verification in Firestore:", err);
+      }
+    }
   };
 
-  const handleAddCity = (newCity: City) => {
-    setCities([...cities, newCity]);
+  const handleAddCity = async (newCity: City) => {
+    setCities(prev => [...prev, newCity]);
+    try {
+      await saveCityToFirestore(newCity);
+    } catch (err) {
+      console.warn("Notice saving city to Firestore:", err);
+    }
   };
 
   // Partner Application Approval Handler
@@ -353,8 +415,14 @@ export default function App() {
         activeTripsCount: 0
       };
 
-      setCompanies([...companies, newComp]);
+      setCompanies(prev => [...prev, newComp]);
       setSelectedCompanyId(newCompId);
+
+      try {
+        await saveCompanyToFirestore(newComp);
+      } catch (err) {
+        console.warn("Notice saving new company to Firestore:", err);
+      }
     }
   };
 
@@ -370,13 +438,40 @@ export default function App() {
   };
 
   // Complaint Resolution Handler
-  const handleResolveComplaint = (complaintId: string, response: string) => {
-    setComplaints(cmps => cmps.map(c => c.id === complaintId ? { ...c, status: 'resolved', adminResponse: response } : c));
+  const handleResolveComplaint = async (complaintId: string, response: string) => {
+    const updated = complaints.map(c => c.id === complaintId ? { ...c, status: 'resolved' as const, adminResponse: response } : c);
+    setComplaints(updated);
+    const target = updated.find(c => c.id === complaintId);
+    if (target) {
+      try {
+        await saveComplaintToFirestore(target);
+      } catch (err) {
+        console.warn("Notice resolving complaint in Firestore:", err);
+      }
+    }
   };
 
   // Individual Company Commission Update Handler
-  const handleUpdateCompanyCommission = (companyId: string, type: CommissionType, value: number) => {
-    setCompanies(companies.map(c => c.id === companyId ? { ...c, commissionType: type, commissionValue: value } : c));
+  const handleUpdateCompanyCommission = async (companyId: string, type: CommissionType, value: number) => {
+    const updated = companies.map(c => c.id === companyId ? { ...c, commissionType: type, commissionValue: value } : c);
+    setCompanies(updated);
+    const target = updated.find(c => c.id === companyId);
+    if (target) {
+      try {
+        await saveCompanyToFirestore(target);
+      } catch (err) {
+        console.warn("Notice updating company commission in Firestore:", err);
+      }
+    }
+  };
+
+  const handleUpdateAdminSettings = async (newSettings: AdminSettings) => {
+    setAdminSettings(newSettings);
+    try {
+      await saveAdminSettingsToFirestore(newSettings);
+    } catch (err) {
+      console.warn("Notice updating admin settings in Firestore:", err);
+    }
   };
 
   // Submit new application
@@ -390,8 +485,13 @@ export default function App() {
   };
 
   // Submit new complaint
-  const handleSubmitComplaint = (complaint: ComplaintReport) => {
-    setComplaints([complaint, ...complaints]);
+  const handleSubmitComplaint = async (complaint: ComplaintReport) => {
+    setComplaints(prev => [complaint, ...prev]);
+    try {
+      await saveComplaintToFirestore(complaint);
+    } catch (err) {
+      console.warn("Notice submitting complaint to Firestore:", err);
+    }
   };
 
   // Login Simulation with Role Capability
@@ -431,6 +531,7 @@ export default function App() {
         
         {/* Header */}
         <Header
+          user={user}
           currentRole={currentRole}
           onRoleChange={setCurrentRole}
           darkMode={darkMode}
@@ -518,7 +619,7 @@ export default function App() {
               adminSettings={adminSettings}
               applications={partnerApplications}
               complaints={complaints}
-              onUpdateAdminSettings={setAdminSettings}
+              onUpdateAdminSettings={handleUpdateAdminSettings}
               onToggleVerifyCompany={handleToggleVerifyCompany}
               onAddCity={handleAddCity}
               onApproveApplication={handleApproveApplication}

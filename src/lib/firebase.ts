@@ -28,7 +28,7 @@ import {
   limit,
   onSnapshot
 } from 'firebase/firestore';
-import { UserRecord, UserRole, UserStatus, PartnerApplication } from '../types';
+import { UserRecord, UserRole, UserStatus, PartnerApplication, Company, City, ComplaintReport, AdminSettings } from '../types';
 
 const firebaseConfig = {
   apiKey: "AIzaSyCxmAAyA3mADDDIUldLjlPQLTw7jix-Rho",
@@ -411,6 +411,112 @@ export async function updateUserRoleAndStatusInFirestore(
     updateData.companyId = companyId;
   }
   await updateDoc(userRef, updateData);
+}
+
+// Companies Firestore API
+export function subscribeToCompanies(
+  onData: (companies: Company[]) => void,
+  onError?: (err: any) => void
+) {
+  const compRef = collection(db, 'companies');
+  return onSnapshot(
+    compRef,
+    (snapshot) => {
+      const companies: Company[] = [];
+      snapshot.forEach((docSnap) => {
+        companies.push({ id: docSnap.id, ...docSnap.data() } as Company);
+      });
+      onData(companies);
+    },
+    (err) => {
+      console.warn("companies onSnapshot notice:", err);
+      if (onError) onError(err);
+    }
+  );
+}
+
+export async function saveCompanyToFirestore(company: Company): Promise<void> {
+  const compRef = doc(db, 'companies', company.id);
+  await setDoc(compRef, cleanFirestoreData(company), { merge: true });
+}
+
+// Cities Firestore API
+export function subscribeToCities(
+  onData: (cities: City[]) => void,
+  onError?: (err: any) => void
+) {
+  const cityRef = collection(db, 'cities');
+  return onSnapshot(
+    cityRef,
+    (snapshot) => {
+      const cities: City[] = [];
+      snapshot.forEach((docSnap) => {
+        cities.push({ id: docSnap.id, ...docSnap.data() } as City);
+      });
+      onData(cities);
+    },
+    (err) => {
+      console.warn("cities onSnapshot notice:", err);
+      if (onError) onError(err);
+    }
+  );
+}
+
+export async function saveCityToFirestore(city: City): Promise<void> {
+  const cityRef = doc(db, 'cities', city.id);
+  await setDoc(cityRef, cleanFirestoreData(city), { merge: true });
+}
+
+// Complaints Firestore API
+export function subscribeToComplaints(
+  onData: (complaints: ComplaintReport[]) => void,
+  onError?: (err: any) => void
+) {
+  const compRef = collection(db, 'complaints');
+  return onSnapshot(
+    compRef,
+    (snapshot) => {
+      const complaints: ComplaintReport[] = [];
+      snapshot.forEach((docSnap) => {
+        complaints.push({ id: docSnap.id, ...docSnap.data() } as ComplaintReport);
+      });
+      onData(complaints);
+    },
+    (err) => {
+      console.warn("complaints onSnapshot notice:", err);
+      if (onError) onError(err);
+    }
+  );
+}
+
+export async function saveComplaintToFirestore(complaint: ComplaintReport): Promise<void> {
+  const compRef = doc(db, 'complaints', complaint.id);
+  await setDoc(compRef, cleanFirestoreData(complaint), { merge: true });
+}
+
+// Admin Settings Firestore API
+export function subscribeToAdminSettings(
+  onData: (settings: AdminSettings) => void,
+  onError?: (err: any) => void
+) {
+  const settingsRef = doc(db, 'adminSettings', 'general');
+  return onSnapshot(
+    settingsRef,
+    (docSnap) => {
+      if (docSnap.exists()) {
+        onData(docSnap.data() as AdminSettings);
+      }
+    },
+    (err) => {
+      console.warn("adminSettings onSnapshot notice:", err);
+      if (onError) onError(err);
+    }
+  );
+}
+
+export async function saveAdminSettingsToFirestore(settings: AdminSettings): Promise<void> {
+  const settingsRef = doc(db, 'adminSettings', 'general');
+  await setDoc(settingsRef, cleanFirestoreData(settings), { merge: true });
 }
 
 export async function deleteAccountInFirebase(): Promise<void> {
