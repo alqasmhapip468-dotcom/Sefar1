@@ -42,6 +42,7 @@ import {
 import { formatCurrencyMRU } from '../lib/utils';
 import { 
   fetchAllUsersFromFirestore, 
+  subscribeToUsers,
   updateUserRoleAndStatusInFirestore, 
   approveCompanyPartnerRequest, 
   rejectCompanyPartnerRequest 
@@ -125,7 +126,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
   const [notifMessage, setNotifMessage] = useState('');
   const [notifSent, setNotifSent] = useState(false);
 
-  // Load Users from Firestore
+  // Manual Users Refresh from Firestore
   const loadUsers = async () => {
     setIsLoadingUsers(true);
     try {
@@ -138,9 +139,21 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
     }
   };
 
+  // Subscribe to Users in Firestore in real-time
   useEffect(() => {
-    loadUsers();
-  }, [activeTab]);
+    setIsLoadingUsers(true);
+    const unsubscribe = subscribeToUsers(
+      (remoteUsers) => {
+        setUsersList(remoteUsers);
+        setIsLoadingUsers(false);
+      },
+      (err) => {
+        console.warn("Could not load users via real-time subscription:", err);
+        setIsLoadingUsers(false);
+      }
+    );
+    return () => unsubscribe();
+  }, []);
 
   // Handle Edit User Submit
   const handleSaveUserEdit = async (e: React.FormEvent) => {

@@ -27,7 +27,18 @@ import { SuperAdminDashboard } from './components/SuperAdminDashboard';
 import { AiAssistantDrawer } from './components/AiAssistantDrawer';
 import { FaqPrivacyModal } from './components/FaqPrivacyModal';
 import { collection, onSnapshot, doc, setDoc } from 'firebase/firestore';
-import { testFirebaseConnection, auth, onAuthStateChanged, logoutFirebase, fetchUserProfileFromFirestore, db } from './lib/firebase';
+import { 
+  testFirebaseConnection, 
+  auth, 
+  onAuthStateChanged, 
+  logoutFirebase, 
+  fetchUserProfileFromFirestore, 
+  subscribeToCompanyRequests,
+  submitCompanyRequestInFirestore,
+  approveCompanyPartnerRequest,
+  rejectCompanyPartnerRequest,
+  db 
+} from './lib/firebase';
 import { LanguageProvider } from './lib/i18n';
 
 export default function App() {
@@ -140,9 +151,22 @@ export default function App() {
       }
     );
 
+    // 3. Real-time Company Requests Snapshot Listener
+    const unsubscribeCompanyRequests = subscribeToCompanyRequests(
+      (remoteApps) => {
+        if (remoteApps) {
+          setPartnerApplications(remoteApps);
+        }
+      },
+      (err) => {
+        console.warn('Firestore companyRequests onSnapshot notice:', err);
+      }
+    );
+
     return () => {
       unsubscribeTrips();
       unsubscribeBookings();
+      unsubscribeCompanyRequests();
     };
   }, []);
 
@@ -293,10 +317,16 @@ export default function App() {
   };
 
   // Partner Application Approval Handler
-  const handleApproveApplication = (appId: string, adminNotes: string) => {
+  const handleApproveApplication = async (appId: string, adminNotes: string) => {
     setPartnerApplications(apps => apps.map(a => a.id === appId ? { ...a, status: 'approved', adminNotes } : a));
 
     const targetApp = partnerApplications.find(a => a.id === appId);
+    try {
+      await approveCompanyPartnerRequest(appId, targetApp?.userId, adminNotes);
+    } catch (err) {
+      console.warn("Notice approving company partner request in Firestore:", err);
+    }
+
     if (!targetApp) return;
 
     // Check if company already exists
@@ -304,7 +334,7 @@ export default function App() {
     const existingComp = companies.find(c => c.nameAr === compName || c.phone === targetApp.phone);
 
     if (!existingComp) {
-      const newCompId = `comp-${Date.now()}`;
+      const newCompId = targetApp.userId || `comp-${Date.now()}`;
       const newComp: Company = {
         id: newCompId,
         name: compName,
@@ -329,8 +359,14 @@ export default function App() {
   };
 
   // Partner Application Rejection Handler
-  const handleRejectApplication = (appId: string, adminNotes: string) => {
+  const handleRejectApplication = async (appId: string, adminNotes: string) => {
     setPartnerApplications(apps => apps.map(a => a.id === appId ? { ...a, status: 'rejected', adminNotes } : a));
+    const targetApp = partnerApplications.find(a => a.id === appId);
+    try {
+      await rejectCompanyPartnerRequest(appId, targetApp?.userId, adminNotes);
+    } catch (err) {
+      console.warn("Notice rejecting company partner request in Firestore:", err);
+    }
   };
 
   // Complaint Resolution Handler
@@ -344,8 +380,13 @@ export default function App() {
   };
 
   // Submit new application
-  const handleSubmitPartnerApplication = (app: PartnerApplication) => {
-    setPartnerApplications([app, ...partnerApplications]);
+  const handleSubmitPartnerApplication = async (app: PartnerApplication) => {
+    setPartnerApplications(prev => [app, ...prev]);
+    try {
+      await submitCompanyRequestInFirestore(app);
+    } catch (err) {
+      console.warn("Notice submitting company application to Firestore:", err);
+    }
   };
 
   // Submit new complaint

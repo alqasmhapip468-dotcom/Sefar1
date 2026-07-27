@@ -25,9 +25,10 @@ import {
   getDocFromServer,
   updateDoc,
   query,
-  limit
+  limit,
+  onSnapshot
 } from 'firebase/firestore';
-import { UserRecord, UserRole, UserStatus } from '../types';
+import { UserRecord, UserRole, UserStatus, PartnerApplication } from '../types';
 
 const firebaseConfig = {
   apiKey: "AIzaSyCxmAAyA3mADDDIUldLjlPQLTw7jix-Rho",
@@ -196,7 +197,7 @@ export async function fetchUserProfileFromFirestore(uid: string): Promise<UserRe
 }
 
 /**
- * User Management APIs for Admin Panel
+ * User & Company Requests Management APIs for Admin Panel
  */
 export async function fetchAllUsersFromFirestore(): Promise<UserRecord[]> {
   try {
@@ -216,6 +217,136 @@ export async function fetchAllUsersFromFirestore(): Promise<UserRecord[]> {
   }
 }
 
+export function subscribeToUsers(
+  onData: (users: UserRecord[]) => void,
+  onError?: (err: any) => void
+) {
+  const usersRef = collection(db, 'users');
+  return onSnapshot(
+    usersRef,
+    (snapshot) => {
+      const users: UserRecord[] = [];
+      snapshot.forEach((docSnap) => {
+        users.push({ ...docSnap.data(), uid: docSnap.id } as UserRecord);
+      });
+      onData(users);
+    },
+    (err) => {
+      console.warn("users onSnapshot notice:", err);
+      if (onError) onError(err);
+    }
+  );
+}
+
+export async function submitCompanyRequestInFirestore(appData: PartnerApplication): Promise<void> {
+  const reqRef = doc(db, 'companyRequests', appData.id);
+  const partnerRef = doc(db, 'partner_applications', appData.id);
+
+  // Write application document to Firestore companyRequests & partner_applications
+  await setDoc(reqRef, appData, { merge: true });
+  try {
+    await setDoc(partnerRef, appData, { merge: true });
+  } catch (err) {
+    console.warn("Notice setDoc partner_applications:", err);
+  }
+
+  // Update user profile to pending_company in users collection
+  if (appData.userId) {
+    try {
+      const userRef = doc(db, 'users', appData.userId);
+      await setDoc(userRef, { role: 'pending_company' }, { merge: true });
+    } catch (err) {
+      console.warn("Notice updating user role to pending_company:", err);
+    }
+  }
+}
+
+export function subscribeToCompanyRequests(
+  onData: (apps: PartnerApplication[]) => void,
+  onError?: (err: any) => void
+) {
+  const reqRef = collection(db, 'companyRequests');
+  return onSnapshot(
+    reqRef,
+    (snapshot) => {
+      const apps: PartnerApplication[] = [];
+      snapshot.forEach((docSnap) => {
+        apps.push({ id: docSnap.id, ...docSnap.data() } as PartnerApplication);
+      });
+      apps.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+      onData(apps);
+    },
+    (err) => {
+      console.warn("companyRequests onSnapshot notice:", err);
+      if (onError) onError(err);
+    }
+  );
+}
+
+export async function approveCompanyPartnerRequest(requestId: string, targetUserId?: string, adminNotes: string = ''): Promise<void> {
+  const reqRef = doc(db, 'companyRequests', requestId);
+  const partnerRef = doc(db, 'partner_applications', requestId);
+
+  const updatePayload = {
+    status: 'approved' as const,
+    adminNotes
+  };
+
+  try {
+    await setDoc(reqRef, updatePayload, { merge: true });
+  } catch (err) {
+    console.warn("Notice setDoc companyRequests doc:", err);
+  }
+
+  try {
+    await setDoc(partnerRef, updatePayload, { merge: true });
+  } catch (err) {
+    console.warn("Notice setDoc partner_applications doc:", err);
+  }
+
+  const userIdToUpdate = targetUserId || requestId;
+  if (userIdToUpdate) {
+    const userRef = doc(db, 'users', userIdToUpdate);
+    try {
+      await setDoc(userRef, { role: 'company', status: 'active', companyId: userIdToUpdate }, { merge: true });
+    } catch (err) {
+      console.warn("Notice updating user document on approval:", err);
+    }
+  }
+}
+
+export async function rejectCompanyPartnerRequest(requestId: string, targetUserId?: string, adminNotes: string = ''): Promise<void> {
+  const reqRef = doc(db, 'companyRequests', requestId);
+  const partnerRef = doc(db, 'partner_applications', requestId);
+
+  const updatePayload = {
+    status: 'rejected' as const,
+    adminNotes
+  };
+
+  try {
+    await setDoc(reqRef, updatePayload, { merge: true });
+  } catch (err) {
+    console.warn("Notice setDoc companyRequests doc on rejection:", err);
+  }
+
+  try {
+    await setDoc(partnerRef, updatePayload, { merge: true });
+  } catch (err) {
+    console.warn("Notice setDoc partner_applications doc on rejection:", err);
+  }
+
+  const userIdToUpdate = targetUserId || requestId;
+  if (userIdToUpdate) {
+    const userRef = doc(db, 'users', userIdToUpdate);
+    try {
+      await setDoc(userRef, { role: 'customer', status: 'active' }, { merge: true });
+    } catch (err) {
+      console.warn("Notice updating user document on rejection:", err);
+    }
+  }
+}
+
 export async function updateUserRoleAndStatusInFirestore(
   uid: string, 
   role: UserRole, 
@@ -228,23 +359,6 @@ export async function updateUserRoleAndStatusInFirestore(
     updateData.companyId = companyId;
   }
   await updateDoc(userRef, updateData);
-}
-
-export async function approveCompanyPartnerRequest(uid: string): Promise<void> {
-  const userRef = doc(db, 'users', uid);
-  await updateDoc(userRef, {
-    role: 'company',
-    status: 'active',
-    companyId: uid
-  });
-}
-
-export async function rejectCompanyPartnerRequest(uid: string): Promise<void> {
-  const userRef = doc(db, 'users', uid);
-  await updateDoc(userRef, {
-    role: 'customer',
-    status: 'active'
-  });
 }
 
 export async function deleteAccountInFirebase(): Promise<void> {

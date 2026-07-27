@@ -9,6 +9,7 @@ import {
   loginAccountInFirebase, 
   registerAccountInFirebase, 
   deleteAccountInFirebase, 
+  submitCompanyRequestInFirestore,
   db,
   type ConfirmationResult 
 } from '../lib/firebase';
@@ -282,16 +283,18 @@ export const PassengerAccountModal: React.FC<PassengerAccountModalProps> = ({
   };
 
   // Handle Partner Application Submit
-  const handlePartnerSubmit = (e: React.FormEvent) => {
+  const handlePartnerSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!appPhone) {
       alert('يرجى إدخال رقم الهاتف للتواصل');
       return;
     }
 
+    const currentUid = user?.id || `usr-${Date.now()}`;
+
     const newApp: PartnerApplication = {
       id: `app-${Date.now()}`,
-      userId: user?.id || `usr-${Date.now()}`,
+      userId: currentUid,
       type: appType,
       companyName: appType === 'company' ? companyName : undefined,
       managerName: appType === 'company' ? managerName : undefined,
@@ -307,16 +310,14 @@ export const PassengerAccountModal: React.FC<PassengerAccountModalProps> = ({
       createdAt: new Date().toISOString()
     };
 
-    onSubmitApplication(newApp);
-
-    // Update user's role to pending_company in Firestore if user is logged in
-    if (user?.id) {
-      try {
-        setDoc(doc(db, 'users', user.id), { role: 'pending_company' }, { merge: true });
-      } catch (err) {
-        console.warn("Notice updating role to pending_company:", err);
-      }
+    // Save directly to Firestore companyRequests & partner_applications
+    try {
+      await submitCompanyRequestInFirestore(newApp);
+    } catch (err) {
+      console.warn("Notice saving company request in Firestore:", err);
     }
+
+    onSubmitApplication(newApp);
 
     setAppSubmittedMsg('تم إرسال طلب الانضمام بنجاح إلى لوحة الإدارة المشرفة! ستصلك رسالة حال اعتماد طلبك.');
     setTimeout(() => setAppSubmittedMsg(''), 6000);

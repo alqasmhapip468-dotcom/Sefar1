@@ -16,6 +16,30 @@
       },
       "required": ["uid", "name", "phone", "email", "role", "status"]
     },
+    "companyRequest": {
+      "title": "Company Transport Request",
+      "description": "Application submitted by a company or driver to join the platform",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "type": { "type": "string" },
+        "companyName": { "type": "string" },
+        "managerName": { "type": "string" },
+        "driverName": { "type": "string" },
+        "vehicleModel": { "type": "string" },
+        "plateNumber": { "type": "string" },
+        "licenseNumber": { "type": "string" },
+        "phone": { "type": "string" },
+        "email": { "type": "string" },
+        "commercialRegisterOrDoc": { "type": "string" },
+        "notes": { "type": "string" },
+        "status": { "type": "string" },
+        "adminNotes": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "userId", "phone", "status"]
+    },
     "trip": {
       "title": "Intercity Transport Trip",
       "description": "Bus or driver trip between Mauritanian cities",
@@ -52,6 +76,10 @@
     "/users/{userId}": {
       "schema": { "$ref": "#/entities/user" },
       "description": "User profile collection"
+    },
+    "/companyRequests/{requestId}": {
+      "schema": { "$ref": "#/entities/companyRequest" },
+      "description": "Company and driver join requests collection"
     },
     "/trips/{tripId}": {
       "schema": { "$ref": "#/entities/trip" },
