@@ -27,7 +27,7 @@ import { SuperAdminDashboard } from './components/SuperAdminDashboard';
 import { AiAssistantDrawer } from './components/AiAssistantDrawer';
 import { FaqPrivacyModal } from './components/FaqPrivacyModal';
 import { collection, onSnapshot, doc, setDoc } from 'firebase/firestore';
-import { testFirebaseConnection, auth, onAuthStateChanged, logoutFirebase, db } from './lib/firebase';
+import { testFirebaseConnection, auth, onAuthStateChanged, logoutFirebase, fetchUserProfileFromFirestore, db } from './lib/firebase';
 import { LanguageProvider } from './lib/i18n';
 
 export default function App() {
@@ -52,22 +52,28 @@ export default function App() {
   useEffect(() => {
     testFirebaseConnection();
 
-    const unsubscribe = onAuthStateChanged(auth, (fbUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
       if (fbUser) {
-        const email = fbUser.email || '';
-        const isSuperAdmin = email.toLowerCase() === 'alqasmhapip468@gmail.com';
-        setUser({
+        const profile = await fetchUserProfileFromFirestore(fbUser.uid);
+        const email = fbUser.email || profile?.email || '';
+        const isSuperAdmin = email.toLowerCase() === 'alqasmhapip468@gmail.com' || profile?.role === 'super_admin';
+
+        const userObj: UserProfile = {
           id: fbUser.uid,
-          name: fbUser.displayName || (isSuperAdmin ? 'المشرف العام (Super Admin)' : (fbUser.phoneNumber ? `مستخدم (${fbUser.phoneNumber})` : email.split('@')[0] || 'مستخدم مسجل')),
-          email: email || (fbUser.phoneNumber ? `${fbUser.phoneNumber.replace(/\+/g, '')}@safar.mr` : 'user@safar.mr'),
-          phone: fbUser.phoneNumber || '+222 4525 1010',
-          role: isSuperAdmin ? 'super_admin' : 'passenger',
+          name: profile?.name || fbUser.displayName || (isSuperAdmin ? 'المشرف العام (Super Admin)' : 'مسافر موريتاني'),
+          email: email || `${fbUser.phoneNumber?.replace(/\+/g, '')}@safar.mr`,
+          phone: profile?.phone || fbUser.phoneNumber || '+222 4525 1010',
+          role: (profile?.role || (isSuperAdmin ? 'super_admin' : 'passenger')) as UserRole,
           favorites: [],
-          createdAt: new Date().toISOString()
-        });
+          createdAt: profile?.createdAt || new Date().toISOString()
+        };
+
+        setUser(userObj);
         if (isSuperAdmin) {
           setCurrentRole('super_admin');
         }
+      } else {
+        setUser(null);
       }
     });
 

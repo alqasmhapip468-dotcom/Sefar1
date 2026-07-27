@@ -29,7 +29,14 @@ async function startServer() {
         });
       }
 
-      const ai = new GoogleGenAI({ apiKey });
+      const ai = new GoogleGenAI({
+        apiKey,
+        httpOptions: {
+          headers: {
+            'User-Agent': 'aistudio-build'
+          }
+        }
+      });
       const systemInstruction = `
 أنت مساعد سفر ذكي وخبير في منصة "Safar MR" (سفر موريتانيا) لحجز الرحلات البرية بين المدن الموريتانية.
 تتميز بالأسلوب الموريتاني اللبق والمهني والعربي الأصيل.
@@ -41,7 +48,7 @@ async function startServer() {
 `;
 
       const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
+        model: "gemini-3.6-flash",
         contents: prompt || `أريد نصيحة بخصوص السفر من ${origin || 'نواكشوط'} إلى ${destination || 'نواذيبو'} بتاريخ ${date || 'اليوم'}.`,
         config: {
           systemInstruction,

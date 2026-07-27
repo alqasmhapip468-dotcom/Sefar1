@@ -1,0 +1,63 @@
+{
+  "entities": {
+    "user": {
+      "title": "User Profile",
+      "description": "User account details in Safar MR platform",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "name": { "type": "string" },
+        "phone": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["uid", "name", "phone", "email", "role"]
+    },
+    "trip": {
+      "title": "Intercity Transport Trip",
+      "description": "Bus or driver trip between Mauritanian cities",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "companyId": { "type": "string" },
+        "companyName": { "type": "string" },
+        "originAr": { "type": "string" },
+        "destinationAr": { "type": "string" },
+        "departureDate": { "type": "string" },
+        "departureTime": { "type": "string" },
+        "priceMRU": { "type": "number" },
+        "availableSeats": { "type": "number" }
+      },
+      "required": ["id", "companyName", "originAr", "destinationAr", "priceMRU"]
+    },
+    "booking": {
+      "title": "Passenger Seat Booking",
+      "description": "Passenger ticket booking record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "bookingCode": { "type": "string" },
+        "seats": { "type": "array" },
+        "totalPriceMRU": { "type": "number" },
+        "bookingStatus": { "type": "string" }
+      },
+      "required": ["id", "bookingCode", "seats", "totalPriceMRU"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/user" },
+      "description": "User profile collection"
+    },
+    "/trips/{tripId}": {
+      "schema": { "$ref": "#/entities/trip" },
+      "description": "Available transport trips collection"
+    },
+    "/bookings/{bookingId}": {
+      "schema": { "$ref": "#/entities/booking" },
+      "description": "Passenger bookings collection"
+    }
+  }
+}

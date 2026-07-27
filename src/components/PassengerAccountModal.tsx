@@ -1,8 +1,15 @@
 import React, { useState } from 'react';
-import { X, User, Ticket, Building2, ShieldCheck, Phone, Mail, LogOut, FileText, CheckCircle2, AlertCircle, Send, Car, Lock, KeyRound, Sparkles } from 'lucide-react';
+import { X, User, Ticket, Building2, ShieldCheck, Phone, Mail, LogOut, FileText, CheckCircle2, AlertCircle, Send, Car, Lock, KeyRound, Sparkles, Trash2 } from 'lucide-react';
 import { Booking, UserProfile, PartnerApplication, ComplaintReport, UserRole, ApplicationType } from '../types';
 import { formatCurrencyMRU } from '../lib/utils';
-import { loginWithGoogle, sendSmsOtp, loginOrRegisterWithEmail, type ConfirmationResult } from '../lib/firebase';
+import { 
+  loginWithGoogle, 
+  sendSmsOtp, 
+  loginAccountInFirebase, 
+  registerAccountInFirebase, 
+  deleteAccountInFirebase, 
+  type ConfirmationResult 
+} from '../lib/firebase';
 
 interface PassengerAccountModalProps {
   user: UserProfile | null;
@@ -88,15 +95,16 @@ export const PassengerAccountModal: React.FC<PassengerAccountModalProps> = ({
       const gUser = await loginWithGoogle();
       if (gUser) {
         onLoginSimulate(
-          gUser.displayName || 'مسافر موريتاني',
-          gUser.phoneNumber || '+222 4600 0000',
-          gUser.email || 'user@safar.mr',
-          'passenger'
+          gUser.name,
+          gUser.phone,
+          gUser.email,
+          gUser.role
         );
+        onClose();
       }
     } catch (err: any) {
-      console.warn("Google login notification:", err);
-      onLoginSimulate('المختار ولد أحمد', '+222 4525 1010', 'mokhtar@safar.mr', 'passenger');
+      console.warn("Google login error:", err);
+      setAuthError('تعذر تسجيل الدخول بـ Google. يرجى إعادة المحاولة.');
     } finally {
       setIsSubmittingAuth(false);
     }
@@ -123,27 +131,29 @@ export const PassengerAccountModal: React.FC<PassengerAccountModalProps> = ({
     setIsSubmittingAuth(true);
 
     try {
-      const syntheticEmail = `${cleanPhone.replace(/\D/g, '')}@safar.mr`;
-      const fbUser = await loginOrRegisterWithEmail(syntheticEmail, cleanPass);
-      const isSuperAdmin = cleanPhone.includes('468') || syntheticEmail.includes('alqasm');
+      const userRecord = await loginAccountInFirebase(cleanPhone, cleanPass);
       onLoginSimulate(
-        nameInput || (isSuperAdmin ? 'المشرف العام (Super Admin)' : 'مسافر موريتاني'),
-        phoneInput,
-        syntheticEmail,
-        isSuperAdmin ? 'super_admin' : 'passenger'
+        userRecord.name,
+        userRecord.phone,
+        userRecord.email,
+        userRecord.role
       );
       onClose();
     } catch (err: any) {
-      console.warn("Phone password login fallback:", err);
-      const syntheticEmail = `${cleanPhone.replace(/\D/g, '')}@safar.mr`;
-      const isSuperAdmin = cleanPhone.includes('468') || syntheticEmail.includes('alqasm');
-      onLoginSimulate(
-        nameInput || (isSuperAdmin ? 'المشرف العام (Super Admin)' : 'مسافر موريتاني'),
-        phoneInput,
-        syntheticEmail,
-        isSuperAdmin ? 'super_admin' : 'passenger'
-      );
-      onClose();
+      console.warn("Phone password login error:", err);
+      const code = err?.code || '';
+      const msg = err?.message || '';
+      if (
+        code === 'auth/user-not-found' ||
+        code === 'auth/invalid-credential' ||
+        code === 'auth/wrong-password' ||
+        msg.includes('user-not-found') ||
+        msg.includes('invalid-credential')
+      ) {
+        setAuthError('هذا الحساب غير موجود أو كلمة السر غير صحيحة! يرجى إنشاء حساب جديد أولاً.');
+      } else {
+        setAuthError('تعذر تسجيل الدخول. يرجى التأكد من رقم الهاتف وكلمة السر.');
+      }
     } finally {
       setIsSubmittingAuth(false);
     }
@@ -165,27 +175,29 @@ export const PassengerAccountModal: React.FC<PassengerAccountModalProps> = ({
     setIsSubmittingAuth(true);
 
     try {
-      const fbUser = await loginOrRegisterWithEmail(cleanEmail, cleanPass);
-      if (fbUser) {
-        const isSuperAdmin = fbUser.email?.toLowerCase() === 'alqasmhapip468@gmail.com';
-        onLoginSimulate(
-          fbUser.displayName || (isSuperAdmin ? 'المشرف العام (Super Admin)' : cleanEmail.split('@')[0]),
-          fbUser.phoneNumber || '+222 4600 0000',
-          fbUser.email || cleanEmail,
-          isSuperAdmin ? 'super_admin' : 'passenger'
-        );
-        onClose();
-      }
-    } catch (err: any) {
-      console.warn("Firebase email auth notification:", err);
-      const isSuperAdmin = cleanEmail === 'alqasmhapip468@gmail.com';
+      const userRecord = await loginAccountInFirebase(cleanEmail, cleanPass);
       onLoginSimulate(
-        isSuperAdmin ? 'المشرف العام (Super Admin)' : cleanEmail.split('@')[0] || 'مستخدم مسجل',
-        '+222 4600 0000',
-        cleanEmail,
-        isSuperAdmin ? 'super_admin' : 'passenger'
+        userRecord.name,
+        userRecord.phone,
+        userRecord.email,
+        userRecord.role
       );
       onClose();
+    } catch (err: any) {
+      console.warn("Email password login error:", err);
+      const code = err?.code || '';
+      const msg = err?.message || '';
+      if (
+        code === 'auth/user-not-found' ||
+        code === 'auth/invalid-credential' ||
+        code === 'auth/wrong-password' ||
+        msg.includes('user-not-found') ||
+        msg.includes('invalid-credential')
+      ) {
+        setAuthError('الحساب غير موجود أو كلمة السر غير صحيحة! يرجى الانتقال لتبويب "إنشاء حساب جديد".');
+      } else {
+        setAuthError('تعذر تسجيل الدخول. يرجى التأكد من البريد الإلكتروني وكلمة السر.');
+      }
     } finally {
       setIsSubmittingAuth(false);
     }
@@ -196,8 +208,18 @@ export const PassengerAccountModal: React.FC<PassengerAccountModalProps> = ({
     e.preventDefault();
     setAuthError('');
 
-    if (!regName.trim() || (!regEmail.trim() && !regPhone.trim()) || !regPassword) {
-      setAuthError('يرجى ملء كافة الحقول المطلوبة لإنشاء الحساب');
+    if (!regName.trim()) {
+      setAuthError('يرجى إدخال الاسم الكامل');
+      return;
+    }
+
+    if (!regPhone.trim() && !regEmail.trim()) {
+      setAuthError('يرجى إدخال رقم الهاتف أو البريد الإلكتروني');
+      return;
+    }
+
+    if (!regPassword) {
+      setAuthError('يرجى إدخال كلمة السر');
       return;
     }
 
@@ -214,30 +236,46 @@ export const PassengerAccountModal: React.FC<PassengerAccountModalProps> = ({
     setIsSubmittingAuth(true);
 
     try {
-      const cleanEmail = regEmail.trim().toLowerCase() || `${regPhone.replace(/\D/g, '')}@safar.mr`;
-      const fbUser = await loginOrRegisterWithEmail(cleanEmail, regPassword);
-      const isSuperAdmin = cleanEmail === 'alqasmhapip468@gmail.com';
+      const userRecord = await registerAccountInFirebase(
+        regName.trim(),
+        regPhone.trim(),
+        regEmail.trim(),
+        regPassword
+      );
 
       onLoginSimulate(
-        regName.trim(),
-        regPhone.trim() || '+222 4600 0000',
-        cleanEmail,
-        isSuperAdmin ? 'super_admin' : 'passenger'
+        userRecord.name,
+        userRecord.phone,
+        userRecord.email,
+        userRecord.role
       );
       onClose();
     } catch (err: any) {
-      console.warn("Registration fallback notice:", err);
-      const cleanEmail = regEmail.trim().toLowerCase() || `${regPhone.replace(/\D/g, '')}@safar.mr`;
-      const isSuperAdmin = cleanEmail === 'alqasmhapip468@gmail.com';
-      onLoginSimulate(
-        regName.trim(),
-        regPhone.trim() || '+222 4600 0000',
-        cleanEmail,
-        isSuperAdmin ? 'super_admin' : 'passenger'
-      );
-      onClose();
+      console.warn("Registration error:", err);
+      const code = err?.code || '';
+      if (code === 'auth/email-already-in-use') {
+        setAuthError('هذا الحساب (البريد/الهاتف) مسجل بالفعل! يمكنك الانتقال إلى "تسجيل الدخول".');
+      } else if (code === 'auth/weak-password') {
+        setAuthError('كلمة السر ضعيفة جداً. يرجى استخدام 6 أحرف أو أرقام على الأقل.');
+      } else {
+        setAuthError(`تعذر إنشاء الحساب: ${err?.message || 'يرجى مراجعة البيانات وإعادة المحاولة'}`);
+      }
     } finally {
       setIsSubmittingAuth(false);
+    }
+  };
+
+  // Handle Delete Account
+  const handleDeleteAccount = async () => {
+    if (!window.confirm('هل أنت تأكد من أنك تريد حذف حسابك نهائياً من منصة سفر؟ لا يمكن استرجاع الحساب بعد الحذف.')) {
+      return;
+    }
+    try {
+      await deleteAccountInFirebase();
+      onLogout();
+      onClose();
+    } catch (err: any) {
+      alert('حدث خطأ أثناء حذف الحساب: ' + (err?.message || 'يرجى تسجيل الدخول مجدداً ثم المحاولة.'));
     }
   };
 
@@ -632,13 +670,24 @@ export const PassengerAccountModal: React.FC<PassengerAccountModalProps> = ({
                   </div>
                 </div>
 
-                <button
-                  onClick={onLogout}
-                  className="px-3.5 py-2 bg-slate-900 hover:bg-red-500/20 text-slate-300 hover:text-red-400 border border-slate-700 rounded-xl font-bold transition-all flex items-center gap-1.5"
-                >
-                  <LogOut className="w-3.5 h-3.5" />
-                  <span>تسجيل الخروج</span>
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={onLogout}
+                    className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700 rounded-xl font-bold transition-all flex items-center gap-1.5"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                    <span>تسجيل الخروج</span>
+                  </button>
+
+                  <button
+                    onClick={handleDeleteAccount}
+                    title="حذف الحساب بشكل نهائي من القاعدة"
+                    className="px-3 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 rounded-xl font-bold transition-all flex items-center gap-1.5"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>حذف الحساب</span>
+                  </button>
+                </div>
               </div>
 
               {/* Navigation Tabs */}
