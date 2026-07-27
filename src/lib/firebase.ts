@@ -566,6 +566,16 @@ export async function logoutFirebase() {
 
 export { onAuthStateChanged, type User, type ConfirmationResult };
 
+import { 
+  INITIAL_CITIES,
+  INITIAL_COMPANIES,
+  INITIAL_TRIPS,
+  INITIAL_BOOKINGS,
+  INITIAL_ADMIN_SETTINGS,
+  INITIAL_PARTNER_APPLICATIONS,
+  INITIAL_COMPLAINTS
+} from '../data/mockData';
+
 // Connectivity Test Helper according to firebase-skill guidelines
 export async function testFirebaseConnection(): Promise<boolean> {
   try {
@@ -574,5 +584,66 @@ export async function testFirebaseConnection(): Promise<boolean> {
   } catch (err) {
     console.warn("Firebase connectivity check (offline/fallback mode active):", err);
     return false;
+  }
+}
+
+// Automatic Firestore Seeder to ensure Firebase is populated for Admin & App
+export async function seedInitialFirestoreData(): Promise<void> {
+  try {
+    // Seed Admin Settings
+    const settingsSnap = await getDoc(doc(db, 'adminSettings', 'general'));
+    if (!settingsSnap.exists()) {
+      await saveAdminSettingsToFirestore(INITIAL_ADMIN_SETTINGS);
+    }
+
+    // Seed Cities
+    const citiesSnap = await getDocs(query(collection(db, 'cities'), limit(1)));
+    if (citiesSnap.empty) {
+      for (const city of INITIAL_CITIES) {
+        await saveCityToFirestore(city);
+      }
+    }
+
+    // Seed Companies
+    const compSnap = await getDocs(query(collection(db, 'companies'), limit(1)));
+    if (compSnap.empty) {
+      for (const comp of INITIAL_COMPANIES) {
+        await saveCompanyToFirestore(comp);
+      }
+    }
+
+    // Seed Trips
+    const tripsSnap = await getDocs(query(collection(db, 'trips'), limit(1)));
+    if (tripsSnap.empty) {
+      for (const trip of INITIAL_TRIPS) {
+        await setDoc(doc(db, 'trips', trip.id), cleanFirestoreData(trip), { merge: true });
+      }
+    }
+
+    // Seed Bookings
+    const bookingsSnap = await getDocs(query(collection(db, 'bookings'), limit(1)));
+    if (bookingsSnap.empty) {
+      for (const b of INITIAL_BOOKINGS) {
+        await setDoc(doc(db, 'bookings', b.id), cleanFirestoreData(b), { merge: true });
+      }
+    }
+
+    // Seed Partner Applications
+    const appsSnap = await getDocs(query(collection(db, 'companyRequests'), limit(1)));
+    if (appsSnap.empty) {
+      for (const appItem of INITIAL_PARTNER_APPLICATIONS) {
+        await submitCompanyRequestInFirestore(appItem);
+      }
+    }
+
+    // Seed Complaints
+    const cmpsSnap = await getDocs(query(collection(db, 'complaints'), limit(1)));
+    if (cmpsSnap.empty) {
+      for (const cmp of INITIAL_COMPLAINTS) {
+        await saveComplaintToFirestore(cmp);
+      }
+    }
+  } catch (err) {
+    console.warn("Notice in seedInitialFirestoreData:", err);
   }
 }

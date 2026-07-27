@@ -29,6 +29,7 @@ import { FaqPrivacyModal } from './components/FaqPrivacyModal';
 import { collection, onSnapshot, doc, setDoc } from 'firebase/firestore';
 import { 
   testFirebaseConnection, 
+  seedInitialFirestoreData,
   auth, 
   onAuthStateChanged, 
   logoutFirebase, 
@@ -117,25 +118,26 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // Firestore Real-Time Listeners for Trips and Bookings
+  // Firestore Real-Time Synchronization for All Collections
   useEffect(() => {
+    // 0. Auto-seed initial Firestore collections if empty
+    seedInitialFirestoreData();
+
     // 1. Real-time Trips Snapshot Listener
     const tripsRef = collection(db, 'trips');
     const unsubscribeTrips = onSnapshot(
       tripsRef,
       (snapshot) => {
-        if (!snapshot.empty) {
-          const remoteTrips: Trip[] = [];
-          snapshot.forEach((doc) => {
-            remoteTrips.push({ id: doc.id, ...doc.data() } as Trip);
-          });
-          if (remoteTrips.length > 0) {
-            setTrips(remoteTrips);
-          }
+        const remoteTrips: Trip[] = [];
+        snapshot.forEach((docSnap) => {
+          remoteTrips.push({ id: docSnap.id, ...docSnap.data() } as Trip);
+        });
+        if (remoteTrips.length > 0) {
+          setTrips(remoteTrips);
         }
       },
       (err) => {
-        console.warn('Firestore trips onSnapshot notice (using local/sync state):', err);
+        console.warn('Firestore trips onSnapshot notice:', err);
       }
     );
 
@@ -144,25 +146,23 @@ export default function App() {
     const unsubscribeBookings = onSnapshot(
       bookingsRef,
       (snapshot) => {
-        if (!snapshot.empty) {
-          const remoteBookings: Booking[] = [];
-          snapshot.forEach((doc) => {
-            remoteBookings.push({ id: doc.id, ...doc.data() } as Booking);
-          });
-          if (remoteBookings.length > 0) {
-            setBookings(remoteBookings);
-          }
+        const remoteBookings: Booking[] = [];
+        snapshot.forEach((docSnap) => {
+          remoteBookings.push({ id: docSnap.id, ...docSnap.data() } as Booking);
+        });
+        if (remoteBookings.length > 0) {
+          setBookings(remoteBookings);
         }
       },
       (err) => {
-        console.warn('Firestore bookings onSnapshot notice (using local/sync state):', err);
+        console.warn('Firestore bookings onSnapshot notice:', err);
       }
     );
 
     // 3. Real-time Company Requests Snapshot Listener
     const unsubscribeCompanyRequests = subscribeToCompanyRequests(
       (remoteApps) => {
-        if (remoteApps) {
+        if (remoteApps && remoteApps.length > 0) {
           setPartnerApplications(remoteApps);
         }
       },
@@ -192,7 +192,7 @@ export default function App() {
     // 6. Real-time Complaints Listener
     const unsubscribeComplaints = subscribeToComplaints(
       (remoteComplaints) => {
-        if (remoteComplaints) {
+        if (remoteComplaints && remoteComplaints.length > 0) {
           setComplaints(remoteComplaints);
         }
       }
