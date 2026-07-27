@@ -47,6 +47,23 @@ export const db = getFirestore(app);
 export const googleProvider = new GoogleAuthProvider();
 
 /**
+ * Helper to recursively remove undefined properties before writing to Firestore
+ */
+export function cleanFirestoreData(data: any): any {
+  if (data === null || data === undefined) return null;
+  if (typeof data !== 'object') return data;
+  if (Array.isArray(data)) return data.map(cleanFirestoreData);
+
+  const cleaned: Record<string, any> = {};
+  for (const [key, val] of Object.entries(data)) {
+    if (val !== undefined) {
+      cleaned[key] = cleanFirestoreData(val);
+    }
+  }
+  return cleaned;
+}
+
+/**
  * Helper to ensure user document exists in `users/{uid}`
  */
 export async function ensureUserDocInFirestore(user: User, customName?: string, customPhone?: string): Promise<UserRecord> {
@@ -111,7 +128,7 @@ export async function ensureUserDocInFirestore(user: User, customName?: string, 
   };
 
   try {
-    await setDoc(userDocRef, newRecord);
+    await setDoc(userDocRef, cleanFirestoreData(newRecord));
   } catch (err) {
     console.warn("Firestore setDoc user record error:", err);
   }
@@ -239,13 +256,14 @@ export function subscribeToUsers(
 }
 
 export async function submitCompanyRequestInFirestore(appData: PartnerApplication): Promise<void> {
+  const cleanData = cleanFirestoreData(appData);
   const reqRef = doc(db, 'companyRequests', appData.id);
   const partnerRef = doc(db, 'partner_applications', appData.id);
 
   // Write application document to Firestore companyRequests & partner_applications
-  await setDoc(reqRef, appData, { merge: true });
+  await setDoc(reqRef, cleanData, { merge: true });
   try {
-    await setDoc(partnerRef, appData, { merge: true });
+    await setDoc(partnerRef, cleanData, { merge: true });
   } catch (err) {
     console.warn("Notice setDoc partner_applications:", err);
   }
@@ -266,21 +284,55 @@ export function subscribeToCompanyRequests(
   onError?: (err: any) => void
 ) {
   const reqRef = collection(db, 'companyRequests');
-  return onSnapshot(
+  const partnerRef = collection(db, 'partner_applications');
+
+  let companyAppsMap = new Map<string, PartnerApplication>();
+  let partnerAppsMap = new Map<string, PartnerApplication>();
+
+  const emitMerged = () => {
+    const combinedMap = new Map<string, PartnerApplication>();
+    // Priority to companyAppsMap then partnerAppsMap
+    companyAppsMap.forEach((val, key) => combinedMap.set(key, val));
+    partnerAppsMap.forEach((val, key) => combinedMap.set(key, val));
+
+    const apps = Array.from(combinedMap.values());
+    apps.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+    onData(apps);
+  };
+
+  const unsubReq = onSnapshot(
     reqRef,
     (snapshot) => {
-      const apps: PartnerApplication[] = [];
+      companyAppsMap.clear();
       snapshot.forEach((docSnap) => {
-        apps.push({ id: docSnap.id, ...docSnap.data() } as PartnerApplication);
+        companyAppsMap.set(docSnap.id, { id: docSnap.id, ...docSnap.data() } as PartnerApplication);
       });
-      apps.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
-      onData(apps);
+      emitMerged();
     },
     (err) => {
       console.warn("companyRequests onSnapshot notice:", err);
       if (onError) onError(err);
     }
   );
+
+  const unsubPartner = onSnapshot(
+    partnerRef,
+    (snapshot) => {
+      partnerAppsMap.clear();
+      snapshot.forEach((docSnap) => {
+        partnerAppsMap.set(docSnap.id, { id: docSnap.id, ...docSnap.data() } as PartnerApplication);
+      });
+      emitMerged();
+    },
+    (err) => {
+      console.warn("partner_applications onSnapshot notice:", err);
+    }
+  );
+
+  return () => {
+    unsubReq();
+    unsubPartner();
+  };
 }
 
 export async function approveCompanyPartnerRequest(requestId: string, targetUserId?: string, adminNotes: string = ''): Promise<void> {
