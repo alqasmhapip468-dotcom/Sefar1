@@ -750,10 +750,10 @@ export const PassengerAccountModal: React.FC<PassengerAccountModalProps> = ({
                         <div className="flex items-center justify-between border-b border-slate-700/60 pb-3">
                           <div className="flex items-center gap-2">
                             <span className="font-mono text-xs font-black text-emerald-400 bg-slate-900 px-2 py-0.5 rounded-lg border border-slate-800">
-                              #{b.bookingCode}
+                              #{b.bookingCode || b.id}
                             </span>
                             <span className="text-xs font-bold text-white">
-                              {b.tripDetails.originAr} ← {b.tripDetails.destinationAr}
+                              {b.tripDetails?.originAr || (b as any).originCityAr || 'نواكشوط'} ← {b.tripDetails?.destinationAr || (b as any).destinationCityAr || 'نواذيبو'}
                             </span>
                           </div>
 
@@ -767,19 +767,19 @@ export const PassengerAccountModal: React.FC<PassengerAccountModalProps> = ({
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-slate-300">
                           <div>
                             <span className="text-[10px] text-slate-400 block">الشركة</span>
-                            <span className="font-bold text-white">{b.tripDetails.companyName}</span>
+                            <span className="font-bold text-white">{b.tripDetails?.companyName || (b as any).companyNameAr || 'شركة نقل'}</span>
                           </div>
                           <div>
                             <span className="text-[10px] text-slate-400 block">التاريخ والوقت</span>
-                            <span className="font-bold text-white">{b.tripDetails.departureDate} ({b.tripDetails.departureTime})</span>
+                            <span className="font-bold text-white">{b.tripDetails?.departureDate || b.departureDate || ''} ({b.tripDetails?.departureTime || b.departureTime || ''})</span>
                           </div>
                           <div>
                             <span className="text-[10px] text-slate-400 block">المقاعد</span>
-                            <span className="font-bold text-emerald-400 font-mono">{b.seats.join(', ')}</span>
+                            <span className="font-bold text-emerald-400 font-mono">{(b.seats || (b as any).seatNumbers || []).join(', ')}</span>
                           </div>
                           <div>
                             <span className="text-[10px] text-slate-400 block">السعر الإجمالي</span>
-                            <span className="font-bold text-white">{formatCurrencyMRU(b.totalPriceMRU)}</span>
+                            <span className="font-bold text-white">{formatCurrencyMRU(b.totalPriceMRU || 0)}</span>
                           </div>
                         </div>
 

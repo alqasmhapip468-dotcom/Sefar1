@@ -28,9 +28,13 @@ export interface PartnerApplication {
   id: string;
   userId: string;
   type: ApplicationType;
+  typeAr?: string;
   // Company fields
   companyName?: string;
   managerName?: string;
+  contactPerson?: string;
+  city?: string;
+  fleetCount?: number;
   // Independent driver fields
   driverName?: string;
   vehicleModel?: string;
@@ -104,7 +108,7 @@ export interface Company {
   activeTripsCount: number;
 }
 
-export type VehicleType = 'bus' | 'minibus' | 'v8' | 'taxi';
+export type VehicleType = 'bus' | 'minibus' | 'v8' | 'taxi' | 'bus_vip' | 'bus_standard' | 'car_7seats';
 
 export interface Vehicle {
   id: string;
@@ -115,6 +119,11 @@ export interface Vehicle {
   totalSeats: number;
   amenities: Array<'ac' | 'wifi' | 'charger' | 'water' | 'recliners' | 'luggage'>;
   photoUrl?: string;
+  typeAr?: string;
+  capacity?: number;
+  features?: string[];
+  featuresAr?: string[];
+  status?: 'active' | 'maintenance' | 'inactive';
 }
 
 export interface Driver {
@@ -124,6 +133,7 @@ export interface Driver {
   phone: string;
   licenseNumber: string;
   rating: number;
+  status?: 'active' | 'inactive';
 }
 
 export interface Seat {
@@ -144,6 +154,7 @@ export interface Trip {
   id: string;
   companyId: string;
   companyName: string;
+  companyNameAr?: string;
   companyLogo: string;
   companyRating: number;
   vehicleId: string;

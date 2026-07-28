@@ -305,21 +305,32 @@ export const INITIAL_REVIEWS: Review[] = [];
 export const INITIAL_BOOKINGS: Booking[] = [
   {
     id: 'BK-98214',
+    bookingCode: 'SFR-98214',
+    userId: 'usr-default',
     tripId: 'trip-101',
+    tripDetails: {
+      originAr: 'نواكشوط',
+      destinationAr: 'نواذيبو',
+      companyName: 'شركة المسافر الذهبي للنقل',
+      companyLogo: 'https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?w=150&auto=format&fit=crop&q=80',
+      departureDate: new Date().toISOString().split('T')[0],
+      departureTime: '08:00',
+      arrivalTime: '13:30',
+      vehicleType: 'bus_vip',
+      vehicleModel: 'Mercedes Travego 2023'
+    },
     passengerName: 'المختار ولد أحمد',
     passengerPhone: '+222 2779 8492',
     passengerEmail: 'mokhtar@safar.mr',
-    originCityAr: 'نواكشوط',
-    destinationCityAr: 'نواذيبو',
-    companyNameAr: 'شركة المسافر الذهبي للنقل',
-    departureDate: new Date().toISOString().split('T')[0],
-    departureTime: '08:00',
-    seatNumbers: ['S3', 'S4'],
+    seats: ['S3', 'S4'],
     totalPriceMRU: 1600,
+    discountMRU: 0,
+    commissionMRU: 60,
+    netCompanyMRU: 1540,
     paymentMethod: 'bankily',
     paymentStatus: 'paid',
     bookingStatus: 'confirmed',
-    qrCodeData: 'SAFAR-TICKET-BK-98214-NKC-NDB',
+    qrData: 'SAFAR-TICKET-BK-98214-NKC-NDB',
     createdAt: new Date().toISOString()
   }
 ];

@@ -46,10 +46,10 @@ export const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
   const companyBookings = bookings.filter(b => companyTrips.some(t => t.id === b.tripId));
 
   // Revenue Calculations
-  const totalGrossRevenue = companyBookings.reduce((sum, b) => sum + b.totalPriceMRU, 0);
-  const totalCommissionPaid = companyBookings.reduce((sum, b) => sum + b.commissionMRU, 0);
+  const totalGrossRevenue = companyBookings.reduce((sum, b) => sum + (b.totalPriceMRU || 0), 0);
+  const totalCommissionPaid = companyBookings.reduce((sum, b) => sum + (b.commissionMRU || 0), 0);
   const netEarnings = totalGrossRevenue - totalCommissionPaid;
-  const totalPassengers = companyBookings.reduce((sum, b) => sum + b.seats.length, 0);
+  const totalPassengers = companyBookings.reduce((sum, b) => sum + (b.seats?.length || 0), 0);
 
   // Tab State
   const [activeTab, setActiveTab] = useState<'overview' | 'trips' | 'add_trip' | 'bookings' | 'fleet'>('overview');
@@ -585,9 +585,9 @@ export const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
                 <div className="text-slate-300 space-y-1 pt-1">
                   <p><strong>اسم المسافر:</strong> {verifiedBooking.passengerName}</p>
                   <p><strong>الهاتف:</strong> {verifiedBooking.passengerPhone}</p>
-                  <p><strong>المقاعد:</strong> {verifiedBooking.seats.join(', ')}</p>
-                  <p><strong>الخط:</strong> {verifiedBooking.tripDetails.originAr} ← {verifiedBooking.tripDetails.destinationAr}</p>
-                  <p><strong>التاريخ والوقت:</strong> {verifiedBooking.tripDetails.departureDate} ({verifiedBooking.tripDetails.departureTime})</p>
+                  <p><strong>المقاعد:</strong> {(verifiedBooking.seats || []).join(', ')}</p>
+                  <p><strong>الخط:</strong> {verifiedBooking.tripDetails?.originAr || ''} ← {verifiedBooking.tripDetails?.destinationAr || ''}</p>
+                  <p><strong>التاريخ والوقت:</strong> {verifiedBooking.tripDetails?.departureDate || ''} ({verifiedBooking.tripDetails?.departureTime || ''})</p>
                 </div>
                 <button
                   onClick={() => {

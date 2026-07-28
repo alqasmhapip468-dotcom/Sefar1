@@ -10,12 +10,22 @@ interface TicketModalProps {
 }
 
 export const TicketModal: React.FC<TicketModalProps> = ({ booking, onClose }) => {
+  const originAr = booking.tripDetails?.originAr || (booking as any).originCityAr || 'نواكشوط';
+  const destinationAr = booking.tripDetails?.destinationAr || (booking as any).destinationCityAr || 'نواذيبو';
+  const companyName = booking.tripDetails?.companyName || (booking as any).companyNameAr || 'شركة نقل';
+  const companyLogo = booking.tripDetails?.companyLogo || 'https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?w=150&auto=format&fit=crop&q=80';
+  const departureDate = booking.tripDetails?.departureDate || booking.departureDate || '';
+  const departureTime = booking.tripDetails?.departureTime || booking.departureTime || '';
+  const arrivalTime = booking.tripDetails?.arrivalTime || '13:00';
+  const vehicleType = booking.tripDetails?.vehicleType || 'bus_vip';
+  const seatsList = booking.seats || (booking as any).seatNumbers || [];
+
   const handleDownloadPDF = () => {
     generateBookingPDF(booking);
   };
 
   const handleShareWhatsApp = () => {
-    const text = `تذكرة حجز سفر موريتانيا (Safar MR)\nرقم الحجز: ${booking.bookingCode}\nالاسم: ${booking.passengerName}\nالخط: ${booking.tripDetails.originAr} إلى ${booking.tripDetails.destinationAr}\nالمقاعد: ${booking.seats.join(', ')}\nالتاريخ: ${booking.tripDetails.departureDate} الساعة ${booking.tripDetails.departureTime}`;
+    const text = `تذكرة حجز سفر موريتانيا (Safar MR)\nرقم الحجز: ${booking.bookingCode || booking.id}\nالاسم: ${booking.passengerName}\nالخط: ${originAr} إلى ${destinationAr}\nالمقاعد: ${seatsList.join(', ')}\nالتاريخ: ${departureDate} الساعة ${departureTime}`;
     window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, '_blank');
   };
 
@@ -47,38 +57,38 @@ export const TicketModal: React.FC<TicketModalProps> = ({ booking, onClose }) =>
             <div className="flex items-center justify-between pb-3 border-b border-slate-800">
               <div className="flex items-center gap-2.5">
                 <img
-                  src={booking.tripDetails.companyLogo}
-                  alt={booking.tripDetails.companyName}
+                  src={companyLogo}
+                  alt={companyName}
                   className="w-10 h-10 rounded-xl object-cover border border-slate-700"
                   referrerPolicy="no-referrer"
                 />
                 <div>
-                  <h3 className="font-extrabold text-sm text-white">{booking.tripDetails.companyName}</h3>
-                  <span className="text-[10px] text-slate-400">{formatVehicleTypeArabic(booking.tripDetails.vehicleType)}</span>
+                  <h3 className="font-extrabold text-sm text-white">{companyName}</h3>
+                  <span className="text-[10px] text-slate-400">{formatVehicleTypeArabic(vehicleType)}</span>
                 </div>
               </div>
 
               <div className="text-left">
                 <span className="text-[10px] text-slate-400 block">رمز الحجز</span>
-                <span className="text-sm font-mono font-black text-emerald-400">{booking.bookingCode}</span>
+                <span className="text-sm font-mono font-black text-emerald-400">{booking.bookingCode || booking.id}</span>
               </div>
             </div>
 
             {/* Route & Times */}
             <div className="bg-slate-900/90 p-4 rounded-2xl border border-slate-800 flex items-center justify-between text-center">
               <div>
-                <span className="text-lg font-black text-emerald-400 block">{booking.tripDetails.departureTime}</span>
-                <span className="text-xs font-bold text-white">{booking.tripDetails.originAr}</span>
+                <span className="text-lg font-black text-emerald-400 block">{departureTime}</span>
+                <span className="text-xs font-bold text-white">{originAr}</span>
               </div>
 
               <div className="px-3">
                 <Bus className="w-5 h-5 text-emerald-400 mx-auto" />
-                <span className="text-[10px] text-slate-400">{booking.tripDetails.departureDate}</span>
+                <span className="text-[10px] text-slate-400">{departureDate}</span>
               </div>
 
               <div>
-                <span className="text-lg font-black text-blue-400 block">{booking.tripDetails.arrivalTime}</span>
-                <span className="text-xs font-bold text-white">{booking.tripDetails.destinationAr}</span>
+                <span className="text-lg font-black text-blue-400 block">{arrivalTime}</span>
+                <span className="text-xs font-bold text-white">{destinationAr}</span>
               </div>
             </div>
 
@@ -91,7 +101,7 @@ export const TicketModal: React.FC<TicketModalProps> = ({ booking, onClose }) =>
 
               <div className="bg-slate-900/60 p-2.5 rounded-xl border border-slate-800">
                 <span className="text-[10px] text-slate-400 block">المقاعد المحجوزة</span>
-                <span className="font-bold text-emerald-400 font-mono">{booking.seats.join(', ')}</span>
+                <span className="font-bold text-emerald-400 font-mono">{seatsList.join(', ')}</span>
               </div>
 
               <div className="bg-slate-900/60 p-2.5 rounded-xl border border-slate-800">

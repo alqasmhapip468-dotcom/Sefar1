@@ -207,12 +207,12 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
 
   // Calculate Today's Real-time Transactions & Stats
   const todayStr = new Date().toISOString().split('T')[0];
-  const todayBookings = bookings.filter(b => b.createdAt.startsWith(todayStr) || b.tripDetails.departureDate === todayStr);
+  const todayBookings = bookings.filter(b => b.createdAt?.startsWith(todayStr) || b.tripDetails?.departureDate === todayStr);
   const todayTransactionsCount = todayBookings.length;
-  const todayVolumeMRU = todayBookings.reduce((sum, b) => sum + b.totalPriceMRU, 0);
-  const todayCommissionsMRU = todayBookings.reduce((sum, b) => sum + b.commissionMRU, 0);
+  const todayVolumeMRU = todayBookings.reduce((sum, b) => sum + (b.totalPriceMRU || 0), 0);
+  const todayCommissionsMRU = todayBookings.reduce((sum, b) => sum + (b.commissionMRU || 0), 0);
 
-  const totalVolumeMRU = bookings.reduce((sum, b) => sum + b.totalPriceMRU, 0);
+  const totalVolumeMRU = bookings.reduce((sum, b) => sum + (b.totalPriceMRU || 0), 0);
   const pendingAppsCount = applications.filter(a => a.status === 'pending').length + usersList.filter(u => u.role === 'pending_company').length;
   const pendingComplaintsCount = complaints.filter(c => c.status === 'pending').length;
 
@@ -1178,13 +1178,13 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                 todayBookings.map(b => (
                   <div key={b.id} className="bg-slate-900/80 border border-slate-800 p-3 rounded-2xl flex items-center justify-between">
                     <div>
-                      <span className="font-mono text-emerald-400 font-bold">#{b.bookingCode}</span> - <strong className="text-white">{b.passengerName}</strong> ({b.tripDetails.companyName})
-                      <p className="text-[10px] text-slate-400">{b.tripDetails.originAr} ← {b.tripDetails.destinationAr} • المقاعد: {b.seats.join(', ')}</p>
+                      <span className="font-mono text-emerald-400 font-bold">#{b.bookingCode || b.id}</span> - <strong className="text-white">{b.passengerName}</strong> ({b.tripDetails?.companyName || 'شركة للنقل'})
+                      <p className="text-[10px] text-slate-400">{b.tripDetails?.originAr || ''} ← {b.tripDetails?.destinationAr || ''} • المقاعد: {(b.seats || []).join(', ')}</p>
                     </div>
 
                     <div className="text-left">
-                      <span className="font-bold text-white block">{formatCurrencyMRU(b.totalPriceMRU)}</span>
-                      <span className="text-[10px] text-purple-400">عمولة: {formatCurrencyMRU(b.commissionMRU)}</span>
+                      <span className="font-bold text-white block">{formatCurrencyMRU(b.totalPriceMRU || 0)}</span>
+                      <span className="text-[10px] text-purple-400">عمولة: {formatCurrencyMRU(b.commissionMRU || 0)}</span>
                     </div>
                   </div>
                 ))
@@ -1420,9 +1420,9 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                 <span className="font-mono">#{scannedBooking.bookingCode}</span>
               </div>
               <p>اسم المسافر: <strong className="text-white">{scannedBooking.passengerName}</strong> ({scannedBooking.passengerPhone})</p>
-              <p>الشركة الناقلة: <strong>{scannedBooking.tripDetails.companyName}</strong></p>
-              <p>الخط: <strong>{scannedBooking.tripDetails.originAr} ← {scannedBooking.tripDetails.destinationAr}</strong></p>
-              <p>المقاعد: <strong className="text-emerald-400 font-mono">{scannedBooking.seats.join(', ')}</strong></p>
+              <p>الشركة الناقلة: <strong>{scannedBooking.tripDetails?.companyName || 'غير متاح'}</strong></p>
+              <p>الخط: <strong>{scannedBooking.tripDetails?.originAr || ''} ← {scannedBooking.tripDetails?.destinationAr || ''}</strong></p>
+              <p>المقاعد: <strong className="text-emerald-400 font-mono">{(scannedBooking.seats || []).join(', ')}</strong></p>
             </div>
           )}
         </div>

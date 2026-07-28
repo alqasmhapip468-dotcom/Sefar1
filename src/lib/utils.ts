@@ -97,18 +97,26 @@ export function generateBookingPDF(booking: Booking): void {
     y += 10;
   };
 
-  addLine('رمز الحجز:', booking.bookingCode);
+  const originAr = booking.tripDetails?.originAr || (booking as any).originCityAr || 'نواكشوط';
+  const destinationAr = booking.tripDetails?.destinationAr || (booking as any).destinationCityAr || 'نواذيبو';
+  const companyName = booking.tripDetails?.companyName || (booking as any).companyNameAr || 'شركة نقل';
+  const departureDate = booking.tripDetails?.departureDate || (booking as any).departureDate || '';
+  const departureTime = booking.tripDetails?.departureTime || (booking as any).departureTime || '';
+  const vehicleType = booking.tripDetails?.vehicleType || 'bus_vip';
+  const seatsStr = Array.isArray(booking.seats) ? booking.seats.join(', ') : ((booking as any).seatNumbers || []).join(', ');
+
+  addLine('رمز الحجز:', booking.bookingCode || booking.id);
   addLine('اسم المسافر:', booking.passengerName);
   addLine('رقم الهاتف:', booking.passengerPhone);
   if (booking.passengerIdNum) {
     addLine('رقم الهوية:', booking.passengerIdNum);
   }
-  addLine('الشركة الناقلة:', booking.tripDetails.companyName);
-  addLine('مسار الرحلة:', `${booking.tripDetails.originAr} ---> ${booking.tripDetails.destinationAr}`);
-  addLine('تاريخ الانطلاق:', `${booking.tripDetails.departureDate} (${booking.tripDetails.departureTime})`);
-  addLine('نوع المركبة:', formatVehicleTypeArabic(booking.tripDetails.vehicleType));
-  addLine('المقاعد المحجوزة:', booking.seats.join(', '));
-  addLine('إجمالي المبلغ:', `${booking.totalPriceMRU} أوقية (MRU)`);
+  addLine('الشركة الناقلة:', companyName);
+  addLine('مسار الرحلة:', `${originAr} ---> ${destinationAr}`);
+  addLine('تاريخ الانطلاق:', `${departureDate} (${departureTime})`);
+  addLine('نوع المركبة:', formatVehicleTypeArabic(vehicleType));
+  addLine('المقاعد المحجوزة:', seatsStr);
+  addLine('إجمالي المبلغ:', `${booking.totalPriceMRU || 0} أوقية (MRU)`);
   addLine('طريقة الدفع:', formatPaymentMethodArabic(booking.paymentMethod));
 
   // Footer Note
