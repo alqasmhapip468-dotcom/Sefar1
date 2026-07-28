@@ -26,7 +26,7 @@ export type ApplicationStatus = 'pending' | 'approved' | 'rejected';
 
 export interface PartnerApplication {
   id: string;
-  userId: string;
+  userId?: string;
   type: ApplicationType;
   typeAr?: string;
   // Company fields
@@ -34,7 +34,9 @@ export interface PartnerApplication {
   managerName?: string;
   contactPerson?: string;
   city?: string;
-  fleetCount?: number;
+  fleetCount?: number | string;
+  routes?: string[] | string;
+  commercialRegister?: string;
   // Independent driver fields
   driverName?: string;
   vehicleModel?: string;
@@ -116,8 +118,8 @@ export interface Vehicle {
   model: string; // e.g., "مرسيدس سبرينتر 2023" or "تويوتا لاندكروزر V8"
   plateNumber: string; // e.g., "4590 AA 00"
   type: VehicleType;
-  totalSeats: number;
-  amenities: Array<'ac' | 'wifi' | 'charger' | 'water' | 'recliners' | 'luggage'>;
+  totalSeats?: number;
+  amenities?: Array<'ac' | 'wifi' | 'charger' | 'water' | 'recliners' | 'luggage'>;
   photoUrl?: string;
   typeAr?: string;
   capacity?: number;
@@ -153,32 +155,37 @@ export interface RouteStop {
 export interface Trip {
   id: string;
   companyId: string;
-  companyName: string;
+  companyName?: string;
   companyNameAr?: string;
-  companyLogo: string;
-  companyRating: number;
-  vehicleId: string;
-  vehicleModel: string;
+  companyLogo?: string;
+  companyRating?: number;
+  vehicleId?: string;
+  vehicleModel?: string;
   vehicleType: VehicleType;
-  driverId: string;
-  driverName: string;
+  vehicleTypeAr?: string;
+  driverId?: string;
+  driverName?: string;
   originCityId: string;
   originCityNameAr: string;
+  departureStationAr?: string;
   destinationCityId: string;
   destinationCityNameAr: string;
+  arrivalStationAr?: string;
   departureTime: string; // "07:30"
   arrivalTime: string;   // "13:30"
   departureDate: string;  // "2026-07-26"
-  durationHours: string;  // "6 ساعات"
+  durationHours?: string;  // "6 ساعات"
   priceMRU: number;       // e.g. 500
-  availableSeatsCount: number;
-  totalSeatsCount: number;
-  seats: Seat[];
-  amenities: Array<'ac' | 'wifi' | 'charger' | 'water' | 'recliners' | 'luggage'>;
-  stops: RouteStop[];
-  cancellationPolicyAr: string;
+  availableSeatsCount?: number;
+  totalSeatsCount?: number;
+  totalSeats?: number;
+  seats?: Seat[];
+  amenities?: Array<'ac' | 'wifi' | 'charger' | 'water' | 'recliners' | 'luggage'>;
+  featuresAr?: string[];
+  stops?: RouteStop[];
+  cancellationPolicyAr?: string;
   status: 'scheduled' | 'in_transit' | 'completed' | 'cancelled';
-  commissionMRU: number; // Computed platform fee
+  commissionMRU?: number; // Computed platform fee
 }
 
 export type PaymentMethod = 'cash' | 'bankily' | 'masrifi' | 'sedad' | 'card';
